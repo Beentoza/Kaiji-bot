@@ -39,12 +39,12 @@ Stack:
 
 Arhitecture:
 
-**main.py** - launching all needed files: Database, timed_task and synced commands.
-**controllers** - handlers for discord commands
-**database** - factory.py, which creating DB. db_XX.py files, which have functions for operating with DB. and also there's **models** directory.
-**helpers** - functions, which making a different tasks for code: logger, timed_tasks, auto_options for commands and e.t.c
-**tests** - directory, where exist all functions to test the real ones. Launching with every commit in pre-release
-**alembic** - directory, for alembic (sync DB in code with the real one)
+- **main.py** - launching all needed files: Database, timed_task and synced commands.
+- **controllers** - handlers for discord commands
+- **database** - factory.py, which creating DB. db_XX.py files, which have functions for operating with DB. and also there's **models** directory.
+- **helpers** - functions, which making a different tasks for code: logger, timed_tasks, auto_options for commands and e.t.c
+- **tests** - directory, where exist all functions to test the real ones. Launching with every commit in pre-release
+- **alembic** - directory, for alembic (sync DB in code with the real one)
 - **.github/workflows** - have .yml files which launching on pre-release to launch VPS server
 - **requirements.txt** - all needed libraries
 **parameters.json** - description of all commands
