@@ -1,0 +1,191 @@
+{
+  "users": {
+    "alice":   {"discord_id": 1001, "status": 1},
+    "bob":     {"discord_id": 1002, "status": 1},
+    "carol":   {"discord_id": 1003, "status": 1},
+    "dave":    {"discord_id": 1004, "status": 1},
+    "eve":     {"discord_id": 1005, "status": 1},
+    "frank":   {"discord_id": 1006, "status": 1},
+    "grace":   {"discord_id": 1007, "status": 1},
+    "henry":   {"discord_id": 1008, "status": 1}
+  },
+  "scenarios": {
+    "winner_takes_payout": {
+      "bet": {"theme": "match_1", "server_id": 999, "channel_id": 100, "message_id": 200, "options": ["A", "B"]},
+      "participations": [
+        {"user": "alice", "choice": "A", "amount": 50},
+        {"user": "bob",   "choice": "B", "amount": 30},
+        {"user": "carol", "choice": "B", "amount": 20}
+      ],
+      "settlement": {"win_choice": "A"},
+      "expected": {
+        "outcome": {"A": {"1001": 50}, "B": {"1002": 30, "1003": 20}},
+        "koef": 1.0, "status": "success",
+        "channel_id": 100, "message_id": 200,
+        "balances": {"alice": 150, "bob": 70, "carol": 80}
+      }
+    },
+
+    "winner_one_loser_big": {
+      "bet": {"theme": "match_2", "server_id": 999, "channel_id": 101, "message_id": 201, "options": ["A", "B"]},
+      "participations": [
+        {"user": "alice", "choice": "A", "amount": 20},
+        {"user": "bob",   "choice": "B", "amount": 60}
+      ],
+      "settlement": {"win_choice": "A"},
+      "expected": {
+        "outcome": {"A": {"1001": 20}, "B": {"1002": 60}},
+        "koef": 3.0, "status": "success",
+        "channel_id": 101, "message_id": 201,
+        "balances": {"alice": 160, "bob": 40}
+      }
+    },
+
+    "many_winners_one_loser": {
+      "bet": {"theme": "match_3", "server_id": 999, "channel_id": 102, "message_id": 202, "options": ["A", "B"]},
+      "participations": [
+        {"user": "alice", "choice": "A", "amount": 20},
+        {"user": "bob",   "choice": "A", "amount": 30},
+        {"user": "carol", "choice": "A", "amount": 50},
+        {"user": "dave",  "choice": "B", "amount": 50}
+      ],
+      "settlement": {"win_choice": "A"},
+      "expected": {
+        "outcome": {"A": {"1001": 20, "1002": 30, "1003": 50}, "B": {"1004": 50}},
+        "koef": 0.5, "status": "success",
+        "channel_id": 102, "message_id": 202,
+        "balances": {"alice": 110, "bob": 115, "carol": 125, "dave": 50}
+      }
+    },
+
+    "one_winner_many_losers": {
+      "bet": {"theme": "match_4", "server_id": 999, "channel_id": 103, "message_id": 203, "options": ["A", "B"]},
+      "participations": [
+        {"user": "alice", "choice": "A", "amount": 10},
+        {"user": "bob",   "choice": "B", "amount": 20},
+        {"user": "carol", "choice": "B", "amount": 30},
+        {"user": "dave",  "choice": "B", "amount": 40}
+      ],
+      "settlement": {"win_choice": "A"},
+      "expected": {
+        "outcome": {"A": {"1001": 10}, "B": {"1002": 20, "1003": 30, "1004": 40}},
+        "koef": 9.0, "status": "success",
+        "channel_id": 103, "message_id": 203,
+        "balances": {"alice": 190, "bob": 80, "carol": 70, "dave": 60}
+      }
+    },
+
+    "tiny_winners_huge_losers": {
+      "bet": {"theme": "match_5", "server_id": 999, "channel_id": 104, "message_id": 204, "options": ["A", "B"]},
+      "participations": [
+        {"user": "alice", "choice": "A", "amount": 5},
+        {"user": "bob",   "choice": "B", "amount": 50},
+        {"user": "carol", "choice": "B", "amount": 50},
+        {"user": "dave",  "choice": "B", "amount": 50},
+        {"user": "eve",   "choice": "B", "amount": 50}
+      ],
+      "settlement": {"win_choice": "A"},
+      "expected": {
+        "outcome": {"A": {"1001": 5}, "B": {"1002": 50, "1003": 50, "1004": 50, "1005": 50}},
+        "koef": 40.0, "status": "success",
+        "channel_id": 104, "message_id": 204,
+        "balances": {"alice": 300, "bob": 50, "carol": 50, "dave": 50, "eve": 50}
+      }
+    },
+
+    "refund_one_option_only": {
+      "bet": {"theme": "match_6", "server_id": 999, "channel_id": 105, "message_id": 205, "options": ["A", "B"]},
+      "participations": [
+        {"user": "alice", "choice": "A", "amount": 30},
+        {"user": "bob",   "choice": "A", "amount": 20},
+        {"user": "carol", "choice": "A", "amount": 15}
+      ],
+      "settlement": {"win_choice": "A"},
+      "expected": {
+        "outcome": null, "koef": 0, "status": "no_winners_or_losers",
+        "channel_id": 105, "message_id": 205,
+        "balances": {"alice": 100, "bob": 100, "carol": 100}
+      }
+    },
+
+    "refund_all_on_loser_option": {
+      "bet": {"theme": "match_7", "server_id": 999, "channel_id": 106, "message_id": 206, "options": ["A", "B"]},
+      "participations": [
+        {"user": "alice", "choice": "B", "amount": 25},
+        {"user": "bob",   "choice": "B", "amount": 35}
+      ],
+      "settlement": {"win_choice": "A"},
+      "expected": {
+        "outcome": null, "koef": 0, "status": "no_winners_or_losers",
+        "channel_id": 106, "message_id": 206,
+        "balances": {"alice": 100, "bob": 100}
+      }
+    },
+
+    "user_initiated_refund": {
+      "bet": {"theme": "match_8", "server_id": 999, "channel_id": 107, "message_id": 207, "options": ["A", "B"]},
+      "participations": [
+        {"user": "alice", "choice": "A", "amount": 30},
+        {"user": "bob",   "choice": "B", "amount": 25}
+      ],
+      "settlement": {"win_choice": "A", "action": "refund"},
+      "expected": {
+        "outcome": null, "koef": 0, "status": "cancelled",
+        "channel_id": 107, "message_id": 207,
+        "balances": {"alice": 100, "bob": 100}
+      }
+    },
+
+    "user_initiated_refund_many_users": {
+      "bet": {"theme": "match_9", "server_id": 999, "channel_id": 108, "message_id": 208, "options": ["A", "B", "C"]},
+      "participations": [
+        {"user": "alice", "choice": "A", "amount": 40},
+        {"user": "bob",   "choice": "B", "amount": 30},
+        {"user": "carol", "choice": "C", "amount": 20},
+        {"user": "dave",  "choice": "A", "amount": 10},
+        {"user": "eve",   "choice": "B", "amount": 50}
+      ],
+      "settlement": {"win_choice": "A", "action": "refund"},
+      "expected": {
+        "outcome": null, "koef": 0, "status": "cancelled",
+        "channel_id": 108, "message_id": 208,
+        "balances": {"alice": 100, "bob": 100, "carol": 100, "dave": 100, "eve": 100}
+      }
+    },
+
+    "no_participants": {
+      "bet": {"theme": "match_10", "server_id": 999, "channel_id": 109, "message_id": 209, "options": ["A", "B"]},
+      "participations": [],
+      "settlement": {"win_choice": "A"},
+      "expected": {
+        "outcome": null, "koef": 0, "status": "no_participants",
+        "channel_id": 109, "message_id": 209,
+        "balances": {}
+      }
+    },
+
+    "bet_not_found": {
+      "bet": null,
+      "participations": [],
+      "settlement": {"win_choice": "A", "fake_theme": "nonexistent_match"},
+      "expected": {
+        "outcome": null, "koef": 0, "status": "bet_not_found",
+        "channel_id": null, "message_id": null,
+        "balances": {}
+      }
+    },
+
+    "open_bet": {
+      "bet": {"theme": "match_12", "server_id": 999, "channel_id": 111, "message_id": 211, "options": ["A", "B"]},
+      "participations": [
+        {"user": "alice", "choice": "A", "amount": 20}
+      ],
+      "settlement": {"win_choice": "A", "settle_before_end": true},
+      "expected": {
+        "outcome": null, "koef": 0, "status": "open_bet",
+        "channel_id": null, "message_id": null,
+        "balances": {"alice": 80}
+      }
+    }
+  }
+}

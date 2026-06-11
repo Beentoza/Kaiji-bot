@@ -1,0 +1,33 @@
+{
+  "user": {"discord_id": 1001, "mention": "User"},
+
+  "double": {
+    "ban":                    {"setup": {"balance": 500,  "status": 0, "luck_factor": 0.5}, "amount": 50,   "mock_random": null, "expected": {"outcome": "banned",          "balance": 500}},
+    "ban_overrides_other":    {"setup": {"balance": 500,  "status": 0, "luck_factor": 0.5}, "amount": -100, "mock_random": null, "expected": {"outcome": "banned",          "balance": 500}},
+
+    "amount_negative":        {"setup": {"balance": 500,  "status": 1, "luck_factor": 0.5}, "amount": -1,   "mock_random": null, "expected": {"outcome": "negative_amount", "balance": 500}},
+
+    "amount_zero":            {"setup": {"balance": 500,  "status": 1, "luck_factor": 0.5}, "amount": 0,    "mock_random": null, "expected": {"outcome": "too_low",         "balance": 500}},
+    "amount_19":              {"setup": {"balance": 500,  "status": 1, "luck_factor": 0.5}, "amount": 19,   "mock_random": null, "expected": {"outcome": "too_low",         "balance": 500}},
+
+    "exceeds_zero_bal":       {"setup": {"balance": 0,    "status": 1, "luck_factor": 0.5}, "amount": 20,   "mock_random": null, "expected": {"outcome": "too_high",        "balance": 0}},
+    "exceeds_neg_bal":        {"setup": {"balance": -100, "status": 1, "luck_factor": 0.5}, "amount": 20,   "mock_random": null, "expected": {"outcome": "too_high",        "balance": -100}},
+    "exceeds_26":             {"setup": {"balance": 26,   "status": 1, "luck_factor": 0.5}, "amount": 20,   "mock_random": null, "expected": {"outcome": "too_high",        "balance": 26}},
+    "exceeds_by_one":         {"setup": {"balance": 100,  "status": 1, "luck_factor": 0.5}, "amount": 76,   "mock_random": null, "expected": {"outcome": "too_high",        "balance": 100}},
+
+    "edge_balance_27_passes": {"setup": {"balance": 27,   "status": 1, "luck_factor": 0.0}, "amount": 20,   "mock_random": 1501, "expected": {"outcome": "won",             "balance": 46}},
+    "edge_75pct_passes":      {"setup": {"balance": 100,  "status": 1, "luck_factor": 0.0}, "amount": 75,   "mock_random": 1501, "expected": {"outcome": "won",             "balance": 171}},
+    "edge_status_2":          {"setup": {"balance": 100,  "status": 2, "luck_factor": 0.0}, "amount": 20,   "mock_random": 1501, "expected": {"outcome": "won",             "balance": 119}},
+
+    "win_lf_0":               {"setup": {"balance": 100,  "status": 1, "luck_factor": 0.0}, "amount": 20,   "mock_random": 1501, "expected": {"outcome": "won",             "balance": 119}},
+    "win_lf_0_5_max_bet":     {"setup": {"balance": 1000, "status": 1, "luck_factor": 0.5}, "amount": 750,  "mock_random": 1501, "expected": {"outcome": "won",             "balance": 1712}},
+    "win_lf_2_any_seed":      {"setup": {"balance": 1000, "status": 1, "luck_factor": 2.0}, "amount": 20,   "mock_random": 1501, "expected": {"outcome": "won",             "balance": 1019}},
+
+    "lose_lf_0":              {"setup": {"balance": 100,  "status": 1, "luck_factor": 0.0}, "amount": 20,   "mock_random": 1499, "expected": {"outcome": "lost",            "balance": 80}},
+    "lose_lf_0_5":            {"setup": {"balance": 1000, "status": 1, "luck_factor": 0.5}, "amount": 750,  "mock_random": 1499, "expected": {"outcome": "lost",            "balance": 250}},
+    "lose_lf_0_8":            {"setup": {"balance": 1000, "status": 1, "luck_factor": 0.8}, "amount": 500,  "mock_random": 1499, "expected": {"outcome": "lost",            "balance": 500}},
+
+    "draw_bug_lf_0":          {"setup": {"balance": 100,  "status": 1, "luck_factor": 0.0}, "amount": 20,   "mock_random": 1500, "expected": {"outcome": "draw",            "balance": 100}},
+    "draw_bug_lf_1":          {"setup": {"balance": 1000, "status": 1, "luck_factor": 1.0}, "amount": 500,  "mock_random": 1500, "expected": {"outcome": "draw",            "balance": 1000}}
+  }
+}

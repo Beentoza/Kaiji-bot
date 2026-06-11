@@ -1,0 +1,58 @@
+{
+  "_note": "Pure calculate_payouts(rows, opts, choice): winners/losers, payout with koef=loser_sum/win_sum, or refund (when <2 active options OR no bets on the winner OR no losers). No DB.",
+
+  "scenarios": {
+    "payout_even": {
+      "opts": ["A", "B"], "choice": "A",
+      "rows": [
+        {"bet_option": 0, "user_discord_id": 1001, "bet_money_amount": 50},
+        {"bet_option": 1, "user_discord_id": 1002, "bet_money_amount": 30},
+        {"bet_option": 1, "user_discord_id": 1003, "bet_money_amount": 20}
+      ],
+      "expected": {"action": "payout", "koef": 1.0, "outcome": {"A": {"1001": 50}, "B": {"1002": 30, "1003": 20}}}
+    },
+
+    "payout_uneven": {
+      "opts": ["A", "B"], "choice": "A",
+      "rows": [
+        {"bet_option": 0, "user_discord_id": 1001, "bet_money_amount": 20},
+        {"bet_option": 1, "user_discord_id": 1002, "bet_money_amount": 60}
+      ],
+      "expected": {"action": "payout", "koef": 3.0, "outcome": {"A": {"1001": 20}, "B": {"1002": 60}}}
+    },
+
+    "payout_three_options": {
+      "opts": ["A", "B", "C"], "choice": "B",
+      "rows": [
+        {"bet_option": 0, "user_discord_id": 1001, "bet_money_amount": 10},
+        {"bet_option": 1, "user_discord_id": 1002, "bet_money_amount": 40},
+        {"bet_option": 2, "user_discord_id": 1003, "bet_money_amount": 50}
+      ],
+      "expected": {"action": "payout", "koef": 1.5, "outcome": {"A": {"1001": 10}, "B": {"1002": 40}, "C": {"1003": 50}}}
+    },
+
+    "refund_single_option": {
+      "opts": ["A", "B"], "choice": "A",
+      "rows": [
+        {"bet_option": 0, "user_discord_id": 1001, "bet_money_amount": 50},
+        {"bet_option": 0, "user_discord_id": 1002, "bet_money_amount": 30}
+      ],
+      "expected": {"action": "refund", "koef": null, "outcome": {"A": {"1001": 50, "1002": 30}, "B": {}}}
+    },
+
+    "refund_no_bets_on_winner": {
+      "opts": ["A", "B", "C"], "choice": "C",
+      "rows": [
+        {"bet_option": 0, "user_discord_id": 1001, "bet_money_amount": 10},
+        {"bet_option": 1, "user_discord_id": 1002, "bet_money_amount": 20}
+      ],
+      "expected": {"action": "refund", "koef": null, "outcome": {"A": {"1001": 10}, "B": {"1002": 20}, "C": {}}}
+    },
+
+    "refund_no_participants": {
+      "opts": ["A", "B"], "choice": "A",
+      "rows": [],
+      "expected": {"action": "refund", "koef": null, "outcome": {"A": {}, "B": {}}}
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "user": {"discord_id": 3001, "mention": "User"},
+
+  "_note": "time_since_last = seconds since the previous ticket (test sets NOW and lottery_timestamp = NOW - time_since_last). mock_randint = value for random.randint -> lottery_prob -> place; null when randomness isn't reached.",
+
+  "scenarios": {
+    "ban":       {"setup": {"balance": 100, "status": 0, "luck_factor": 0.0, "time_since_last": 1000, "jackpot": 50},  "mock_randint": null, "expected": {"outcome": "banned",   "place": 0, "balance": 100}},
+    "too_poor":  {"setup": {"balance": 5,   "status": 1, "luck_factor": 0.0, "time_since_last": 1000, "jackpot": 50},  "mock_randint": null, "expected": {"outcome": "too_poor", "place": 0, "balance": 5}},
+    "cooldown":  {"setup": {"balance": 100, "status": 1, "luck_factor": 0.0, "time_since_last": 2,    "jackpot": 50},  "mock_randint": null, "expected": {"outcome": "cooldown", "place": 0, "balance": 100}},
+
+    "lost":      {"setup": {"balance": 100, "status": 1, "luck_factor": 0.0, "time_since_last": 1000, "jackpot": 50},  "mock_randint": 500,  "expected": {"outcome": "lost", "place": 0, "balance": 99}},
+    "win_5th":   {"setup": {"balance": 100, "status": 1, "luck_factor": 0.0, "time_since_last": 1000, "jackpot": 50},  "mock_randint": 985,  "expected": {"outcome": "won",  "place": 5, "balance": 119}},
+    "win_4th":   {"setup": {"balance": 100, "status": 1, "luck_factor": 0.0, "time_since_last": 1000, "jackpot": 50},  "mock_randint": 993,  "expected": {"outcome": "won",  "place": 4, "balance": 149}},
+    "win_3rd":   {"setup": {"balance": 100, "status": 1, "luck_factor": 0.0, "time_since_last": 1000, "jackpot": 50},  "mock_randint": 997,  "expected": {"outcome": "won",  "place": 3, "balance": 224}},
+    "win_2nd":   {"setup": {"balance": 100, "status": 1, "luck_factor": 0.0, "time_since_last": 1000, "jackpot": 50},  "mock_randint": 999,  "expected": {"outcome": "won",  "place": 2, "balance": 349}},
+    "win_grand": {"setup": {"balance": 100, "status": 1, "luck_factor": 0.0, "time_since_last": 1000, "jackpot": 200}, "mock_randint": 1000, "expected": {"outcome": "won",  "place": 1, "balance": 799}}
+  }
+}

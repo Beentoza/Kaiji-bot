@@ -1,0 +1,3 @@
+Generic single-database configuration.
+To make a commit
+alembic revision --autogenerate -m "Name of change"

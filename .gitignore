@@ -1,0 +1,11 @@
+venv
+.venv
+.idea
+.env
+__pycache__/
+*.pyc
+test.py
+test_2.py
+combined.log
+.gitignore
+experiments

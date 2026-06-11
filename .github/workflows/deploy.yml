@@ -1,0 +1,21 @@
+name: Deploy Kaiji Bot
+
+# when to trigger
+on:
+  push:
+    branches:
+      - pre-release
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # connect over SSH using the secrets configured earlier
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          # run the deploy script that lives on the server
+          script: /root/Kaiji/deploy.sh

@@ -1,0 +1,230 @@
+{
+  "check": {
+    "daily": {
+      "metadata": {
+        "name": "daily",
+        "description": "claim money every day"
+      }
+    },
+    "weekly": {
+      "metadata": {
+        "name": "weekly",
+        "description": "check money every week"
+      }
+    },
+    "monthly": {
+      "metadata": {
+        "name": "monthly",
+        "description": "check money every month"
+      }
+    },
+    "pickupchange": {
+      "metadata": {
+        "name": "pickupchange",
+        "description": "who will read it anyway"
+      }
+    }
+  },
+  "set": {
+    "role": {
+      "metadata": {
+        "name": "role",
+        "description": "(admin only) Change user role"
+      },
+      "description": {
+        "user": "choose user",
+        "role": "choose which role he should have"
+      },
+      "status": {
+        "banned": 0,
+        "usual user": 1,
+        "authorized": 2,
+        "admin": 3
+      }
+    },
+    "balance":
+      {
+      "metadata":
+        {
+          "name": "balance",
+          "description": "(admin only) Change user balance"
+        },
+      "description": {
+        "user": "choose user",
+        "balance": "choose which balance he should have"
+      },
+        "flag": {
+          "add": 1,
+          "set": 0
+        }
+  }
+  },
+  "outcome": {
+    "create": {
+      "metadata": {
+        "name": "create",
+        "description": "(authorized only) Create a outcome so users can place their own bets."
+      },
+      "description": {
+        "theme": "Write a title of outcome, ex: Will zerg win?",
+        "choices": "Choose options, ex: yes;no, initially no",
+        "timer": "how long users can place bets. After time gone (timer should be less 24h and \nmore than 3 min, initially 7 min",
+        "meas": "unit of measurement minutes, hours (originally minutes)"
+      },
+      "preset": {
+        "Custom": 0,
+        "Will zerg win": 1,
+        "Who will die first": 2
+      },
+      "meas": {
+        "min": "minute",
+        "hour": "hour"
+      }
+    },
+    "end": {
+      "metadata": {
+        "name": "end",
+        "description": "(authorized only)"
+      },
+      "description": {
+        "outcome": "Choose a current outcome",
+        "choice": "Choose which choice is correct"
+      }
+    },
+    "cancel": {
+      "metadata": {
+        "name": "cancel",
+        "description": "(authorized only)"
+      },
+      "description": {
+        "outcome": "Choose a current outcome"
+      }
+    }
+  },
+  "bet": {
+    "place": {
+      "metadata": {
+        "name": "place",
+        "description": "place bet on one of outcomes"
+      },
+      "description": {
+        "bet": "Choose a current bet",
+        "choice": "Choose on which choice you want place bet",
+        "amount": "write your bet (how much Đ you want spend)"
+      }
+    },
+    "withdraw": {
+      "metadata": {
+        "name": "withdraw",
+        "description": "withdraw your bet from outcome if it not closed yet"
+      },
+      "description": {
+        "outcome": "choose outcome where you want withdraw your bet"
+      }
+    },
+    "help": {
+      "metadata": {
+        "name": "help",
+        "description": "get introduction for bet commands"
+      }
+    }
+  },
+  "try": {
+    "lottery": {
+      "metadata": {
+        "name": "lottery",
+        "description": "Try your luck and get jackpot!"
+      }
+    },
+    "market": {
+      "metadata": {
+        "name": "market",
+        "description": "Risk deposit for market profits."
+      },
+      "description": {
+        "amount": "With how many Đ you can risk?"
+      }
+    },
+    "double_or_nothing": {
+      "metadata": {
+        "name": "double_or_nothing",
+        "description": "Risk deposit for double or nothing"
+      },
+      "description": {
+        "amount": "With how many Đ you can risk?"
+      }
+    }
+  },
+  "general": {
+    "balance": {
+      "metadata": {
+        "name": "balance",
+        "description": "gives user balance"
+      },
+      "description": {
+        "user": "choose some user balance"
+      }
+    },
+    "help":
+    {
+      "metadata":
+      {
+        "name": "help",
+        "description": "get help"
+      },
+      "description":
+      {
+        "group": "choose command where you need help",
+        "command": "choose command where you need help",
+        "show": "Should be bet open or closed? Initially closed"
+      },
+      "show":
+      {
+        "Yes": 0,
+        "No": 1
+      }
+    },
+    "poll":
+    {
+      "metadata":
+      {
+        "name": "poll",
+        "description": "get poll"
+      }
+    },
+    "outcomes":
+    {
+      "metadata":
+      {
+        "name": "outcomes",
+        "description": "show all outcomes"
+      },
+      "description": {
+        "open": "Show open/closed outcomes (initially all)",
+        "participation": "Show outcomes where you participated/didn't participated (initially all)",
+         "show": "Should be bet open or closed? Initially closed"
+      },
+      "show":
+      {
+        "Yes": 0,
+        "No": 1
+      },
+
+      "open": {
+        "all": 2,
+        "open": 1,
+        "closed": 0
+      },
+      "participation": {
+        "all": 2,
+        "participated": 1,
+        "not_participated": 0
+      }
+    }
+  },
+  "test": {
+    "description": {
+      "question": "ask something"
+    }
+  }
+}

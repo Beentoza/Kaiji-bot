@@ -1,0 +1,15 @@
+{
+  "user": {"discord_id": 2001, "mention": "User"},
+
+  "_note": "time_since_last = seconds since the previous market run (test sets NOW and market_timestamp = NOW - time_since_last). multiplier = mock for _random_multiplier; null when randomness isn't reached.",
+
+  "market": {
+    "ban":              {"setup": {"balance": 1000, "status": 0, "luck_factor": 0.5, "time_since_last": 1000000}, "amount": 100,  "multiplier": null, "expected": {"outcome": "banned",             "balance": 1000}},
+    "insufficient":     {"setup": {"balance": 100,  "status": 1, "luck_factor": 0.5, "time_since_last": 1000000}, "amount": 200,  "multiplier": null, "expected": {"outcome": "insufficient_funds", "balance": 100}},
+    "cooldown":         {"setup": {"balance": 1000, "status": 1, "luck_factor": 0.5, "time_since_last": 100},     "amount": 100,  "multiplier": null, "expected": {"outcome": "cooldown",           "balance": 1000}},
+    "same_balance":     {"setup": {"balance": 1000, "status": 1, "luck_factor": 0.0, "time_since_last": 1000000}, "amount": 100,  "multiplier": 1.0,  "expected": {"outcome": "same_balance",       "balance": 1000}},
+    "win":              {"setup": {"balance": 1000, "status": 1, "luck_factor": 0.0, "time_since_last": 1000000}, "amount": 100,  "multiplier": 1.5,  "expected": {"outcome": "won",                "balance": 1045}},
+    "lose":             {"setup": {"balance": 1000, "status": 1, "luck_factor": 0.0, "time_since_last": 1000000}, "amount": 100,  "multiplier": 0.5,  "expected": {"outcome": "lost",               "balance": 950}},
+    "all_in_win":       {"setup": {"balance": 1000, "status": 1, "luck_factor": 0.0, "time_since_last": 1000000}, "amount": -574, "multiplier": 1.5,  "expected": {"outcome": "won",                "balance": 1450}}
+  }
+}
