@@ -22,7 +22,7 @@ Stack:
 - PostgreSQL 16
 - SQLAlchemy 2.0 (async)
 - asyncpg
-- Alembic (migrations)
+- Alembic
 
 
 **Testing**
@@ -31,7 +31,6 @@ Stack:
 
 **DevOps**
 - GitHub Actions (CI/CD)
-- Docker / docker-compose
 
 **Utilities**
 - matplotlib (for graphic in profile)
@@ -45,6 +44,6 @@ Arhitecture:
 - **helpers** - functions, which making a different tasks for code: logger, timed_tasks, auto_options for commands and e.t.c
 - **tests** - directory, where exist all functions to test the real ones. Launching with every commit in pre-release
 - **alembic** - directory, for alembic (sync DB in code with the real one)
-- **.github/workflows** - have .yml files which launching on pre-release to launch VPS server
+- **.github/workflows** - have .yml files which launch VPS server (WIP)
 - **requirements.txt** - all needed libraries
 **parameters.json** - description of all commands
