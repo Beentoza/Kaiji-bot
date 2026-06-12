@@ -106,7 +106,9 @@ async def logic(interaction_user_id, interaction_guild_id, amount: int):
             await db_economy.add_to_jackpot(session=uow.session, amount=jackpot_cut)
 
     if won:
+        logger.info(f"User won {delta}")
         return DoubleResult(outcome=DoubleOutcome.WON, amount=amount, delta=delta, jackpot_cut=jackpot_cut)
+    logger.info(f"User lost {delta}")
     return DoubleResult(outcome=DoubleOutcome.LOST, amount=amount, delta=delta)
 
 

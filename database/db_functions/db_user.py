@@ -42,7 +42,7 @@ async def add_new_user(user_id, status: int = 1, balance: int = 100, luck_factor
             return True
         except IntegrityError:
             # unique discord_id violated, user already registered concurrently
-            logger.info(f"User {user_id} already registered, skipping")
+            logger.debug(f"User {user_id} already registered, skipping")
             return False
 
 
@@ -55,7 +55,7 @@ async def check_user_exists(user_id: int) -> bool:
             stmt = select(User.id).where(User.discord_id == user_id)
             result = await session.execute(stmt)
             exists = result.scalar() is not None
-            logger.info(f" Check if  {user_id} exists: {exists}")
+            logger.debug(f" Check if  {user_id} exists: {exists}")
             return exists
         except Exception as e:
             logger.error(f"Couldn't check if {user_id} exists: {e}")

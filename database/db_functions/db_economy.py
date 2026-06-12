@@ -48,7 +48,7 @@ async def update_lottery_and_user(session, user_id: int, user_money_change: int,
             update(Jackpot)
             .values(money=Jackpot.money + jackpot_change)
         )
-        logger.info(f"Changed {user_id}: user balance + {user_money_change}, jackpot + {jackpot_change}")
+        logger.debug(f"Changed {user_id}: user balance + {user_money_change}, jackpot + {jackpot_change}")
 
 
     except Exception as e:
