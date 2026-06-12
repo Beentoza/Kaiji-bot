@@ -4,8 +4,8 @@ import enum
 
 
 class GroupType(enum.Enum):
-    claim = 'check'
-    try_group = 'try'
+    check = 'check'
+    try_group = 'try_group'
     admin = 'admin'
     outcome = 'outcome'
 
