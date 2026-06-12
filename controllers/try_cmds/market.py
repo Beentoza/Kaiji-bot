@@ -113,7 +113,7 @@ def _format_market_message(result, mention):
                 jackpot_msg = f' {mention} 10% of your winnings, valued at Đ{result.jackpot_cut}, has been added to the jackpot.'
             return f"{mention}, you've received Đ{result.end_value_dif + result.amount} (+{result.end_value_dif}) from your latest market run. {jackpot_msg}"
         case MarketOutcome.LOST:
-            return f"{mention}, you've received Đ{int(result.amount - result.delta)} from your latest market run with an initial deposit of Đ{result.amount}. Better luck next time!"
+            return f"{mention}, you've received Đ{int(result.amount + result.delta)} from your latest market run with an initial deposit of Đ{result.amount}. Better luck next time!"
     return None
 
 
