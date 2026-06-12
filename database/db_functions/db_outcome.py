@@ -61,7 +61,7 @@ async def get_bet_with_same_name(outcome: str, server_id) -> bool:
             logger.info(f"Checked {outcome} - same outcome exists")
             return True
 
-        logger.info(f"Checked {outcome} - same outcome doesn't exist")
+        logger.debug(f"Checked {outcome} - same outcome doesn't exist")
         return False
 
 

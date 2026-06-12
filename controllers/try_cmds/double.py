@@ -10,8 +10,6 @@ from helpers.user_functions.check_ban import is_banned
 import constants
 
 
-LOWEST_DOUBLE_PROB = 1000
-HIGHEST_DOUBLE_PROB = 2000
 
 
 class DoubleOutcome(enum.Enum):
@@ -37,11 +35,13 @@ class DoubleResult:
 
 def _resolve_double_outcome(double_prob: int, amount: int) -> tuple[None, None] | tuple[int, bool]:
     """Deciding win or lose from probability, returns delta and won flag"""
-    prob_to_win = (HIGHEST_DOUBLE_PROB + LOWEST_DOUBLE_PROB)*0.5
-    if double_prob < prob_to_win:
+    # example: min: 1, high: 10, 40%
+    # 1 + (10-1)*0.4 = 4.6 - only 4 numbers will pass
+    prob_to_win = constants.LOWEST_DOUBLE_PROB + (constants.HIGHEST_DOUBLE_PROB - constants.LOWEST_DOUBLE_PROB) * constants.DOUBLE_CHANCE_TO_WIN * 0.01
+    if double_prob > prob_to_win:
         delta = - amount
         won = False
-    elif double_prob > prob_to_win:
+    elif double_prob < prob_to_win:
         delta = int(amount * 0.95)
         won = True
     else:
@@ -82,7 +82,7 @@ async def logic(interaction_user_id, interaction_guild_id, amount: int):
         if is_banned(status):
             return DoubleResult(outcome=DoubleOutcome.BANNED)
 
-        # to play user need place atleast 20 and not more than 75% of his bank
+        # to play user need place atleast 20 and not less than 75% of his bank
         if amount < 0:
             return DoubleResult(outcome=DoubleOutcome.NEGATIVE_AMOUNT)
         if amount < 20:
@@ -90,8 +90,8 @@ async def logic(interaction_user_id, interaction_guild_id, amount: int):
         if amount > 0.75 * balance:
             return DoubleResult(outcome=DoubleOutcome.TOO_HIGH)
 
-        double_luck = min(luck_factor * int(LOWEST_DOUBLE_PROB*0.5), int(HIGHEST_DOUBLE_PROB*0.5))
-        double_prob = random.randint(LOWEST_DOUBLE_PROB + int(double_luck), HIGHEST_DOUBLE_PROB)
+        double_luck = min(luck_factor * int(constants.LOWEST_DOUBLE_PROB*0.5), int(constants.HIGHEST_DOUBLE_PROB*0.5))
+        double_prob = random.randint(constants.LOWEST_DOUBLE_PROB + int(double_luck), constants.HIGHEST_DOUBLE_PROB)
         delta, won = _resolve_double_outcome(double_prob, amount)
         if delta is None:
             return DoubleResult(outcome=DoubleOutcome.DRAW)
@@ -106,7 +106,9 @@ async def logic(interaction_user_id, interaction_guild_id, amount: int):
             await db_economy.add_to_jackpot(session=uow.session, amount=jackpot_cut)
 
     if won:
+        logger.info(f"User won {delta}")
         return DoubleResult(outcome=DoubleOutcome.WON, amount=amount, delta=delta, jackpot_cut=jackpot_cut)
+    logger.info(f"User lost {delta}")
     return DoubleResult(outcome=DoubleOutcome.LOST, amount=amount, delta=delta)
 
 

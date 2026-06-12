@@ -47,9 +47,7 @@ class MarketResult:
 def checking_for_prepared_options(amount, balance):
     """Checking if user chose on of the predicted answers"""
     if amount in MARKET_MULTIPLIERS.keys():
-        logger.info("True")
         amount = MARKET_MULTIPLIERS[amount]*balance
-    logger.info(amount)
     return amount
 
 def _user_checks(amount, balance, status, time_since_last):
@@ -115,7 +113,7 @@ def _format_market_message(result, mention):
                 jackpot_msg = f' {mention} 10% of your winnings, valued at Đ{result.jackpot_cut}, has been added to the jackpot.'
             return f"{mention}, you've received Đ{result.end_value_dif + result.amount} (+{result.end_value_dif}) from your latest market run. {jackpot_msg}"
         case MarketOutcome.LOST:
-            return f"{mention}, you've received Đ{int(result.amount - result.delta)} from your latest market run with an initial deposit of Đ{result.amount}. Better luck next time!"
+            return f"{mention}, you've received Đ{int(result.amount + result.delta)} from your latest market run with an initial deposit of Đ{result.amount}. Better luck next time!"
     return None
 
 
@@ -132,9 +130,7 @@ async def logic(interaction_user_id, interaction_guild_id, amount: int = None):
             time_since_last = get_timestamp() - market_timestamp
 
 
-        logger.info(amount)
         amount = checking_for_prepared_options(amount, balance) # if player chose 75%, 50%, all-in and e.t.c
-        logger.info(amount)
         check = _user_checks(amount, balance, status, time_since_last)
         if check:
             return check

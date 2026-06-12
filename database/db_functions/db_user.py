@@ -4,7 +4,6 @@ from database.models.Balances import Balance
 from database.models.Statuses import Status
 from database.models.Timestamps import Timestamp
 from database.models.UserData import UserData
-from database.models.Items import Items
 from database.models.BalanceHistory import BalanceHistory
 from database.models.Events import Events, EventType
 from helpers.logger_config import internal_logger as logger
@@ -34,15 +33,14 @@ async def add_new_user(user_id, status: int = 1, balance: int = 100, luck_factor
                     double_curr_row=0,
                     double_max_row=0,
                     luck_factor=luck_factor)
-                items = Items(id=new_user.id)
 
-                session.add_all([new_balance, new_status, new_timestamp, userdata, items])
+                session.add_all([new_balance, new_status, new_timestamp, userdata])
 
                 logger.info(f'Added new user {user_id} into database')
             return True
         except IntegrityError:
             # unique discord_id violated, user already registered concurrently
-            logger.info(f"User {user_id} already registered, skipping")
+            logger.debug(f"User {user_id} already registered, skipping")
             return False
 
 
@@ -55,7 +53,7 @@ async def check_user_exists(user_id: int) -> bool:
             stmt = select(User.id).where(User.discord_id == user_id)
             result = await session.execute(stmt)
             exists = result.scalar() is not None
-            logger.info(f" Check if  {user_id} exists: {exists}")
+            logger.debug(f" Check if  {user_id} exists: {exists}")
             return exists
         except Exception as e:
             logger.error(f"Couldn't check if {user_id} exists: {e}")
@@ -82,6 +80,19 @@ async def get_user_status(user_id: int):
         except Exception as e:
             logger.error(f"Failed to get status for {user_id}: {e}")
             return None
+
+async def get_user_status_balance(session, user_id):
+    stmt = (
+        select(Status.status, Balance.balance)
+        .select_from(User)
+        .join(Status, User.id == Status.id)
+        .join(Balance, User.id == Balance.id)
+        .where(User.discord_id == user_id)
+    )
+
+    result = await session.execute(stmt)
+    info_obj = result.one_or_none()
+    return info_obj
 
 
 async def change_user_status(user_id: int, new_status: int):

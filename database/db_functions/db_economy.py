@@ -17,7 +17,7 @@ async def get_jackpot_info() -> str | None:
             result = await session.execute(select(Jackpot.money).limit(1))
             return result.scalar()
         except Exception as e:
-            logger.error(f"DB Error get_jackpot_info: {e}")
+            logger.error(f"Error: {e}")
             return None
 
 
@@ -25,7 +25,7 @@ async def add_to_jackpot(session, amount: int):
     try:
         await session.execute(update(Jackpot).values(money=Jackpot.money + amount))
     except Exception as e:
-        logger.error(f"DB Error add_to_jackpot: {e}")
+        logger.error(f"Error: {e}")
         raise
 
 
@@ -48,11 +48,11 @@ async def update_lottery_and_user(session, user_id: int, user_money_change: int,
             update(Jackpot)
             .values(money=Jackpot.money + jackpot_change)
         )
-        logger.info(f"Changed {user_id}: user balance + {user_money_change}, jackpot + {jackpot_change}")
+        logger.debug(f"Changed {user_id}: user balance + {user_money_change}, jackpot + {jackpot_change}")
 
 
     except Exception as e:
-        logger.warning(f"Error happened: {e}")
+        logger.warning(f"Error for {user_id}: {e}")
         raise
 
 
@@ -77,7 +77,7 @@ async def get_lottery_info(session, user_id: int):
         result = await session.execute(stmt)
         return result.one_or_none()
     except Exception as e:
-        logger.error(f"DB Error get_lottery_info: {e}")
+        logger.error(f"Error for {user_id}: {e}")
         return None
 
 
@@ -148,7 +148,7 @@ async def get_pickup_change_info(session, user_id: int):
             "status": data[5]
         }
     except Exception as e:
-        logger.error(f"Error in get_pickup_change_info for {user_id}: {e}")
+        logger.error(f"Error for {user_id}: {e}")
         raise
 
 

@@ -18,7 +18,7 @@ async def handle(interaction: discord.Interaction, item_name: str, target: disco
         return await interaction.followup.send("I have no idea who you even are! How you could have a item? Get a cat!")
 
     try:
-        from database.models.Items import ItemType
+        from database.models.ItemsTypeInfo import ItemType
         item_type = ItemType(item_name)
 
         # consume + effect share one transaction: if the effect is already
@@ -64,4 +64,4 @@ async def handle(interaction: discord.Interaction, item_name: str, target: disco
     except _EffectAlreadyActive:
         return await interaction.followup.send(f"**{item_type.value}** is already active on {target.mention}!")
     except Exception as e:
-        logger.error(f"CRITICAL ERROR in use_item handle: {e}")
+        logger.error(e)
