@@ -78,7 +78,7 @@ async def withdraw_bet_for_user(bet_theme: str, user_id: int, server_id, time_no
 
 
 
-async def process_place_bet(session, user_discord_id: int, bet_theme: str, choice_text: str, amount: int, server_id: int) -> BetResult:
+async def process_place_bet(session, user_discord_id: int, bet_theme: str, choice_text: str, amount: int, server_id: int) -> BetPlaceResult:
     try:
 
         stmt = (
@@ -94,18 +94,18 @@ async def process_place_bet(session, user_discord_id: int, bet_theme: str, choic
         data = res.first()
 
         if not data:
-            return BetResult(outcome=BetType.BET_NOT_FOUND)
+            return BetPlaceResult(outcome=BetPlaceType.BET_NOT_FOUND)
 
         bet_entry, user_obj, balance_obj = data
 
         if time.time() > bet_entry.end_timestamp:
-            return BetResult(outcome=BetType.CLOSED)
+            return BetPlaceResult(outcome=BetPlaceType.CLOSED)
 
         opts = bet_entry.options
         list_options = opts if isinstance(opts, list) else opts.split(';')
 
         if choice_text not in list_options:
-            return BetResult(outcome=BetType.CHOICE_NOT_FOUND)
+            return BetPlaceResult(outcome=BetPlaceType.CHOICE_NOT_FOUND)
 
         choice_index = list_options.index(choice_text)
         new_part = BetParticipation(
@@ -133,10 +133,10 @@ async def process_place_bet(session, user_discord_id: int, bet_theme: str, choic
             server_id=server_id
         )
         logger.info(f"Placed bet {user_discord_id} on {bet_theme} {choice_text}: {amount}")
-        return BetResult(outcome=BetType.SUCCESS, amount=amount, bet_name=bet_theme)
+        return BetPlaceResult(outcome=BetPlaceType.SUCCESS, amount=amount, bet_name=bet_theme)
     except IntegrityError as e:
         if "23505" in str(e) or "UniqueViolationError" in str(e):
-            return BetResult(outcome=BetType.ALREADY_BET)
+            return BetPlaceResult(outcome=BetPlaceType.ALREADY_BET)
         raise
     except Exception as e:
         logger.warning(f"Error Type: {type(e)} | Msg: {e}", exc_info=True)

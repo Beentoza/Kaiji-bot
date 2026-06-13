@@ -4,8 +4,8 @@ import dataclasses
 
 
 
-class BetType(enum.Enum):
-    """A types of bet result"""
+class BetPlaceType(enum.Enum):
+    """A types of bet_place result"""
     BANNED = "banned"
     NEGATIVE_AMOUNT = "negative_amount"
     TOO_HIGH = "too_high"
@@ -17,7 +17,7 @@ class BetType(enum.Enum):
     ERROR = 'ERROR'
 
 @dataclasses.dataclass(frozen=True)
-class BetResult:
+class BetPlaceResult:
     """Logic function returning"""
     outcome: BetType
     amount: int = 0
