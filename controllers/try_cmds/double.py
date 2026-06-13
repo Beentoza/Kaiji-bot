@@ -82,7 +82,7 @@ async def logic(interaction_user_id, interaction_guild_id, amount: int):
         if is_banned(status):
             return DoubleResult(outcome=DoubleOutcome.BANNED)
 
-        # to play user need place atleast 20 and not more than 75% of his bank
+        # to play user need place atleast 20 and not less than 75% of his bank
         if amount < 0:
             return DoubleResult(outcome=DoubleOutcome.NEGATIVE_AMOUNT)
         if amount < 20:
