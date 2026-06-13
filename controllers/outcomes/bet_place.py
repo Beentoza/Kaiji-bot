@@ -8,7 +8,7 @@ from helpers.BetTypes import BetType, BetResult
 
 
 def _format_bet_message(result, mention):
-    logger.warning(f"got {result}")
+    logger.debug(f"got {result}")
     match result.outcome: # preparing answer for user
         case BetType.SUCCESS:
             return f"{mention} Your bet on **{result.bet_name}** accepted. You placed Đ{int(result.amount)}, gl!"
