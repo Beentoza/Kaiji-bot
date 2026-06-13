@@ -1,3 +1,5 @@
+from sqlalchemy.exc import IntegrityError
+
 from database.factory import SessionLocal
 from database.models.Users import User
 from database.models.Balances import Balance
@@ -7,6 +9,7 @@ from database.models.BetEvents import BetEvents, BetEventType
 from helpers.logger_config import internal_logger as logger
 from sqlalchemy import select, update, delete, true
 import time
+from helpers.BetTypes import BetType, BetResult
 
 
 async def log_bet_event(session, user_id: int, outcome_id: int, amount: int, option: int, event_type: str, server_id: int):
@@ -73,77 +76,68 @@ async def withdraw_bet_for_user(bet_theme: str, user_id: int, server_id, time_no
         return 'error'
 
 
-async def process_place_bet(user_discord_id: int, bet_theme: str, choice_text: str, amount: int, server_id: int):
+
+
+async def process_place_bet(session, user_discord_id: int, bet_theme: str, choice_text: str, amount: int, server_id: int) -> BetResult:
     try:
-        async with SessionLocal() as session:
-            async with session.begin():
-                # Bet and User+Balance are independent point lookups (one bet by
-                # theme+server, one user by discord_id). Make the cross join explicit
-                # (ON true) instead of implicit: same single-query result, but no
-                # SAWarning about a bets x users cartesian product.
-                stmt = (
-                    select(Bet, User, Balance)
-                    .select_from(Bet)
-                    .join(User, true())
-                    .join(Balance, Balance.id == User.id)
-                    .where(Bet.theme == bet_theme, Bet.server_id == server_id)
-                    .where(User.discord_id == user_discord_id)
-                )
 
-                res = await session.execute(stmt)
-                data = res.first()
+        stmt = (
+            select(Bet, User, Balance)
+            .select_from(Bet)
+            .join(User, true())
+            .join(Balance, Balance.id == User.id)
+            .where(Bet.theme == bet_theme, Bet.server_id == server_id)
+            .where(User.discord_id == user_discord_id)
+        )
 
-                if not data:
-                    return "bet_not_found"
+        res = await session.execute(stmt)
+        data = res.first()
 
-                bet_entry, user_obj, balance_obj = data
+        if not data:
+            return BetResult(outcome=BetType.BET_NOT_FOUND)
 
-                if time.time() > bet_entry.end_timestamp:
-                    return "closed"
+        bet_entry, user_obj, balance_obj = data
 
-                opts = bet_entry.options
-                list_options = opts if isinstance(opts, list) else opts.split(';')
+        if time.time() > bet_entry.end_timestamp:
+            return BetResult(outcome=BetType.CLOSED)
 
-                if choice_text not in list_options:
-                    return "choice_not_found"
+        opts = bet_entry.options
+        list_options = opts if isinstance(opts, list) else opts.split(';')
 
-                choice_index = list_options.index(choice_text)
-                new_part = BetParticipation(
-                    bet_id=bet_entry.id,
-                    user_id=user_obj.id,
-                    option=choice_index,
-                    money=amount
-                )
-                session.add(new_part)
+        if choice_text not in list_options:
+            return BetResult(outcome=BetType.CHOICE_NOT_FOUND)
 
-                # atomic SQL decrement instead of read-modify-write on the ORM object
-                # (lost-update safe). negative balance is blocked by the CHECK constraint.
-                await session.execute(
-                    update(Balance)
-                    .where(Balance.id == user_obj.id)
-                    .values(balance=Balance.balance - amount)
-                )
-                bet_id = bet_entry.id
+        choice_index = list_options.index(choice_text)
+        new_part = BetParticipation(
+            bet_id=bet_entry.id,
+            user_id=user_obj.id,
+            option=choice_index,
+            money=amount
+        )
+        session.add(new_part)
 
-                await session.flush()
-                await log_bet_event(
-                    session=session,
-                    user_id=user_discord_id,
-                    outcome_id=bet_id,
-                    amount=amount,
-                    option=choice_index,
-                    event_type='placed',
-                    server_id=server_id
-                )
-                logger.info(f"Placed bet {user_discord_id} on {bet_theme} {choice_text}: {amount}")
-                return "success"
+        await session.execute(
+            update(Balance)
+            .where(Balance.id == user_obj.id)
+            .values(balance=Balance.balance - amount)
+        )
 
+        await session.flush()
+        await log_bet_event(
+            session=session,
+            user_id=user_discord_id,
+            outcome_id=bet_entry.id,
+            amount=amount,
+            option=choice_index,
+            event_type='placed',
+            server_id=server_id
+        )
+        logger.info(f"Placed bet {user_discord_id} on {bet_theme} {choice_text}: {amount}")
+        return BetResult(outcome=BetType.SUCCESS, amount=amount, bet_name=bet_theme)
+    except IntegrityError as e:
+        if "23505" in str(e) or "UniqueViolationError" in str(e):
+            return BetResult(outcome=BetType.ALREADY_BET)
+        raise
     except Exception as e:
-        await session.rollback()
-        error_str = str(e)
-
-        if "23505" in error_str or "UniqueViolationError" in error_str:
-            return "already_bet"
-
-        logger.warning(f"Place bet error Type: {type(e)} | Msg: {e}")
-        return "error"
+        logger.warning(f"Error Type: {type(e)} | Msg: {e}", exc_info=True)
+        raise
