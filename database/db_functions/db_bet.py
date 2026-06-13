@@ -9,7 +9,7 @@ from database.models.BetEvents import BetEvents, BetEventType
 from helpers.logger_config import internal_logger as logger
 from sqlalchemy import select, update, delete, true
 import time
-from helpers.BetTypes import BetType, BetResult
+from helpers.BetTypes import BetPlaceType, BetPlaceResult, BetWithdrawType, BetWithdrawResult
 
 
 async def log_bet_event(session, user_id: int, outcome_id: int, amount: int, option: int, event_type: str, server_id: int):
@@ -33,7 +33,7 @@ async def log_bet_event(session, user_id: int, outcome_id: int, amount: int, opt
 
 
 
-async def withdraw_bet_for_user(bet_theme: str, user_id: int, server_id, time_now: int) -> str:
+async def withdraw_bet_for_user(bet_theme: str, user_id: int, server_id, time_now: int) -> BetWithdrawResult:
     try:
         async with SessionLocal() as session:
             async with session.begin():
@@ -51,10 +51,10 @@ async def withdraw_bet_for_user(bet_theme: str, user_id: int, server_id, time_no
                 row = result.one_or_none()
 
                 if row is None:
-                    return 'not_existent_bet'
+                    return BetWithdrawResult(outcome=BetWithdrawType.BET_NOT_FOUND)
                 end_timestamp, participation = row
                 if end_timestamp < time_now:
-                    return 'closed_bet'
+                    return BetWithdrawResult(outcome=BetWithdrawType.CLOSED)
 
                 await session.execute(update(BetEvents).where(
                     BetEvents.user_id == internal_id,
@@ -70,10 +70,10 @@ async def withdraw_bet_for_user(bet_theme: str, user_id: int, server_id, time_no
                     BetParticipation.bet_id == participation.bet_id,
                     BetParticipation.user_id == participation.user_id
                 ))
-                return 'success'
+                return BetWithdrawResult(outcome=BetWithdrawType.SUCCESS)
     except Exception as e:
         logger.warning(e)
-        return 'error'
+        return BetWithdrawResult(outcome=BetWithdrawType.ERROR)
 
 
 
