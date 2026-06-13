@@ -83,6 +83,19 @@ async def get_user_status(user_id: int):
             logger.error(f"Failed to get status for {user_id}: {e}")
             return None
 
+async def get_user_status_balance(session, user_id):
+    stmt = (
+        select(Status.status, Balance.balance)
+        .select_from(User)
+        .join(Status, User.id == Status.id)
+        .join(Balance, User.id == Balance.id)
+        .where(User.discord_id == user_id)
+    )
+
+    result = await session.execute(stmt)
+    info_obj = result.one_or_none()
+    return info_obj
+
 
 async def change_user_status(user_id: int, new_status: int):
     try:
