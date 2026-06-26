@@ -11,7 +11,6 @@ from database.models.Balances import Balance
 from database.models.Statuses import Status
 from database.models.Timestamps import Timestamp
 from database.models.UserData import UserData
-from database.models.Items import Items
 from database.models.Bets import Bet
 from database.models.models import BetStatus
 
@@ -59,7 +58,6 @@ async def _seed_all_users(db_session, data):
             pick_up_change=0, daily=0, weekly=0, monthly=0, market=0, lottery=0, pick_up_change_timer=0,
         ))
         rows.append(UserData(id=user.id, double_curr_row=0, double_max_row=0, luck_factor=0))
-        rows.append(Items(id=user.id))
     db_session.add_all(rows)
     await db_session.commit()
 

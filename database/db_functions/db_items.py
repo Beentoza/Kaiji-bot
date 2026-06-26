@@ -1,77 +1,86 @@
 from database.factory import SessionLocal
 from database.models.Users import User
 from sqlalchemy import select
-from database.models.Items import Items, ItemType
+from database.models.ItemsTypeInfo import ItemTypeInfo, UserItem, ItemType
 from database.db_functions.db_user import add_new_user
+
+
+async def _item_type_id(session, item_type: ItemType) -> int | None:
+    """Catalog id of an item type, or None if the type isn't in the catalog."""
+    return await session.scalar(
+        select(ItemTypeInfo.id).where(ItemTypeInfo.item_type == item_type)
+    )
 
 
 async def add_item_to_user(user_id: int, item: str, amount: int = 1):
     async with SessionLocal() as session:
         async with session.begin():
-            internal_id = (await session.scalar(select(User).where(User.discord_id == user_id))).id
+            internal_id = await session.scalar(
+                select(User.id).where(User.discord_id == user_id)
+            )
 
             if not internal_id:
                 await add_new_user(user_id)
-                internal_id = (await session.scalar(select(User).where(User.discord_id == user_id))).id
-
-            # Searching item
-            item_query = await session.execute(
-                select(Items).where(
-                    Items.user_id == internal_id,
-                    Items.item_type == ItemType(item)
+                internal_id = await session.scalar(
+                    select(User.id).where(User.discord_id == user_id)
                 )
-            )
-            user_item_record = item_query.scalar_one_or_none()
 
+            item_id = await _item_type_id(session, ItemType(item))
+            if item_id is None:
+                return
 
-            if user_item_record:
-                user_item_record.item_count += amount
+            # one row per (user, item) — bump it if it exists, else create it
+            user_item = (await session.execute(
+                select(UserItem).where(
+                    UserItem.user_id == internal_id,
+                    UserItem.item_id == item_id,
+                )
+            )).scalar_one_or_none()
+
+            if user_item:
+                user_item.item_count += amount
             else:
-                new_item_record = Items(
+                session.add(UserItem(
                     user_id=internal_id,
-                    item_type=ItemType(item),
-                    item_count=amount
-                )
-                session.add(new_item_record)
+                    item_id=item_id,
+                    item_count=amount,
+                ))
 
 
 async def get_user_inventory(discord_id: int):
-    """Return all of a player's items for autocomplete"""
+    """Return (item_type, item_count) rows for a player's owned items (autocomplete)."""
     async with SessionLocal() as session:
-        # find the user's internal id
-        user_stmt = await session.execute(
+        internal_id = await session.scalar(
             select(User.id).where(User.discord_id == discord_id)
         )
-        internal_id = user_stmt.scalar_one_or_none()
-
         if not internal_id:
             return []
 
-        # get the item list
         stmt = await session.execute(
-            select(Items).where(
-                Items.user_id == internal_id,
-                Items.item_count > 0
-            )
+            select(ItemTypeInfo.item_type, UserItem.item_count)
+            .join(UserItem, UserItem.item_id == ItemTypeInfo.id)
+            .where(UserItem.user_id == internal_id, UserItem.item_count > 0)
         )
-        return stmt.scalars().all()
+        return stmt.all()
+
 
 async def consume_item(session, discord_id: int, item) -> bool:
-    user_stmt = await session.execute(
+    internal_user_id = await session.scalar(
         select(User.id).where(User.discord_id == discord_id)
     )
-    internal_user_id = user_stmt.scalar_one_or_none()
-
     if not internal_user_id:
         return False
 
-    item_stmt = await session.execute(
-        select(Items).where(
-            Items.user_id == internal_user_id,
-            Items.item_type == ItemType(item)
+    item_id = await _item_type_id(session, ItemType(item))
+    if item_id is None:
+        return False
+
+    record = (await session.execute(
+        select(UserItem).where(
+            UserItem.user_id == internal_user_id,
+            UserItem.item_id == item_id,
         )
-    )
-    record = item_stmt.scalar_one_or_none()
+    )).scalar_one_or_none()
 
     if not record or record.item_count <= 0:
         return False
@@ -85,11 +94,11 @@ async def consume_item(session, discord_id: int, item) -> bool:
 
 
 async def get_winning_items() -> dict:
-    """Return {emoji: ItemType} for all items that have an emoji set"""
+    """Return {emoji: ItemType} for all item types that have an emoji set"""
     async with SessionLocal() as session:
         stmt = await session.execute(
-            select(Items.emoji, Items.item_type).where(
-                Items.emoji.isnot(None)
+            select(ItemTypeInfo.emoji, ItemTypeInfo.item_type).where(
+                ItemTypeInfo.emoji.isnot(None)
             )
         )
         rows = stmt.all()
@@ -98,32 +107,35 @@ async def get_winning_items() -> dict:
 
 async def get_item_role(item_type: ItemType) -> int | None:
     async with SessionLocal() as session:
-        stmt = await session.execute(
-            select(Items.role).where(
-                Items.item_type == item_type
+        return await session.scalar(
+            select(ItemTypeInfo.role).where(
+                ItemTypeInfo.item_type == item_type
             )
         )
-        return stmt.scalar_one_or_none()
+
 
 async def transfer_item(from_discord_id: int, to_discord_id: int, item_name: str) -> bool:
     async with SessionLocal() as session:
         async with session.begin():
-            from_internal_id = (await session.execute(
+            from_internal_id = await session.scalar(
                 select(User.id).where(User.discord_id == from_discord_id)
-            )).scalar_one_or_none()
-
-            to_internal_id = (await session.execute(
+            )
+            to_internal_id = await session.scalar(
                 select(User.id).where(User.discord_id == to_discord_id)
-            )).scalar_one_or_none()
+            )
 
             if not from_internal_id or not to_internal_id:
                 return False
 
+            item_id = await _item_type_id(session, ItemType(item_name))
+            if item_id is None:
+                return False
+
             record = (await session.execute(
-                select(Items).where(
-                    Items.user_id == from_internal_id,
-                    Items.item_type == ItemType(item_name),
-                    Items.item_count > 0
+                select(UserItem).where(
+                    UserItem.user_id == from_internal_id,
+                    UserItem.item_id == item_id,
+                    UserItem.item_count > 0,
                 )
             )).scalar_one_or_none()
 
@@ -136,30 +148,30 @@ async def transfer_item(from_discord_id: int, to_discord_id: int, item_name: str
                 await session.delete(record)
 
             to_record = (await session.execute(
-                select(Items).where(
-                    Items.user_id == to_internal_id,
-                    Items.item_type == ItemType(item_name)
+                select(UserItem).where(
+                    UserItem.user_id == to_internal_id,
+                    UserItem.item_id == item_id,
                 )
             )).scalar_one_or_none()
 
             if to_record:
                 to_record.item_count += 1
             else:
-                session.add(Items(
+                session.add(UserItem(
                     user_id=to_internal_id,
-                    item_type=ItemType(item_name),
-                    item_count=1
+                    item_id=item_id,
+                    item_count=1,
                 ))
 
             return True
 
 
 async def get_symbols() -> list:
-    """Return the list of emojis from the DB for the slot machine"""
+    """Return the list of emojis from the catalog for the slot machine"""
     async with SessionLocal() as session:
         stmt = await session.execute(
-            select(Items.emoji).where(
-                Items.emoji.isnot(None)
+            select(ItemTypeInfo.emoji).where(
+                ItemTypeInfo.emoji.isnot(None)
             ).distinct()
         )
         return [row for row in stmt.scalars().all()]

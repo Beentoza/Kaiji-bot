@@ -4,7 +4,6 @@ from database.models.Balances import Balance
 from database.models.Statuses import Status
 from database.models.Timestamps import Timestamp
 from database.models.UserData import UserData
-from database.models.Items import Items
 from database.models.BalanceHistory import BalanceHistory
 from database.models.Events import Events, EventType
 from helpers.logger_config import internal_logger as logger
@@ -34,9 +33,8 @@ async def add_new_user(user_id, status: int = 1, balance: int = 100, luck_factor
                     double_curr_row=0,
                     double_max_row=0,
                     luck_factor=luck_factor)
-                items = Items(id=new_user.id)
 
-                session.add_all([new_balance, new_status, new_timestamp, userdata, items])
+                session.add_all([new_balance, new_status, new_timestamp, userdata])
 
                 logger.info(f'Added new user {user_id} into database')
             return True
