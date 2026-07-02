@@ -164,26 +164,57 @@ async def market_autocomplete(interaction: Interaction, current: str, ) -> list[
     return choices
 
 
-async def items_autocomplete(interaction: Interaction, current: str):
+async def catalog_items_autocomplete(interaction: Interaction, current: str):
+    """Autocomplete for admin item-edit commands. Shows every catalog item type."""
     try:
-        inventory = await db_items.get_user_inventory(interaction.user.id)
+        items = await db_items.get_catalog_items()
 
         choices = []
-        for item in inventory:
-            item_val = item.item_type.value
-
-            # skip the admin item, it's for another command
-            if item_val == "fake_admin":
+        for item in items:
+            if item.item_name is None:
                 continue
-
-            if current.lower() in item_val.lower():
+            if current.lower() in item.item_name.lower():
+                label = f"{item.item_name} {item.emoji}" if item.emoji else item.item_name
                 choices.append(
-                    app_commands.Choice(
-                        name=f"{item_val} ({item.item_count})",
-                        value=item_val
-                    )
+                    app_commands.Choice(name=label, value=item.item_name)
                 )
         return choices[:25]
+    except Exception as e:
+        logger.error(f"Autocomplete error: {e}")
+        return []
+
+
+async def _inventory_choices(interaction: Interaction, current: str, on_author: bool):
+    """Owned items filtered by whether they're used on self (on_author) or on others"""
+    inventory = await db_items.get_user_inventory(interaction.user.id)
+
+    choices = []
+    for item in inventory:
+        if bool(item.on_author) != on_author:
+            continue
+        if current.lower() in item.item_name.lower():
+            choices.append(
+                app_commands.Choice(
+                    name=f"{item.item_name} ({item.item_count})",
+                    value=item.item_name
+                )
+            )
+    return choices[:25]
+
+
+async def self_items_autocomplete(interaction: Interaction, current: str):
+    """Items the player uses on themselves (on_author)."""
+    try:
+        return await _inventory_choices(interaction, current, on_author=True)
+    except Exception as e:
+        logger.error(f"Autocomplete error: {e}")
+        return []
+
+
+async def others_items_autocomplete(interaction: Interaction, current: str):
+    """Items the player throws at other users."""
+    try:
+        return await _inventory_choices(interaction, current, on_author=False)
     except Exception as e:
         logger.error(f"Autocomplete error: {e}")
         return []

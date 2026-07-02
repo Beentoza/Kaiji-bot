@@ -4,8 +4,9 @@ import asyncio
 import discord
 from discord.ext import commands
 
-from config import TOKEN, run_migrations
+from config import TOKEN, run_migrations, GUILDS
 from helpers.logger_config import internal_logger as logger
+from controllers.items import add_effect
 from helpers.timed_tasks import (check_open_bets_status, set_bot_reference,
                                  check_bets_liquidity_task, auto_flush_timer,
                                  add_chances_data_into_DB, check_expired_effects_task)
@@ -43,6 +44,12 @@ class KaijiBot(commands.Bot):
 
 bot = KaijiBot()
 set_bot_reference(bot)
+
+
+# --- TEST: opens the add-effect layout. Remove once wired into a real cog. ---
+@bot.tree.command(name="test_add_effect", description="TEST: open the add-effect menu", guilds=GUILDS)
+async def test_add_effect(interaction: discord.Interaction):
+    await add_effect.handle(interaction)
 
 
 @bot.event
