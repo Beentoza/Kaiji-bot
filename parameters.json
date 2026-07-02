@@ -228,6 +228,23 @@
       }
     }
   },
+  "item": {
+    "add": {
+      "metadata": {
+        "name": "add",
+        "description": "(admin only) Add a new item"
+      }
+    },
+    "change": {
+      "metadata": {
+        "name": "change",
+        "description": "(admin only) Change an existing item"
+      },
+      "description": {
+        "item": "choose which item to change"
+      }
+    }
+  },
   "casino": {
     "casino": {
       "metadata": {

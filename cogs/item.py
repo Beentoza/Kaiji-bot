@@ -3,8 +3,12 @@ from discord import app_commands
 
 from config import GUILDS
 from helpers.logger_config import internal_logger as logger
-from controllers.items import item_use
-from helpers.auto_options import items_autocomplete
+from controllers.items import item_use, add_effect, change_effect
+from helpers.auto_options import (
+    self_items_autocomplete,
+    others_items_autocomplete,
+    catalog_items_autocomplete,
+)
 
 
 class ItemCommands(app_commands.Group):
@@ -19,18 +23,31 @@ class ItemCommands(app_commands.Group):
         )
         logger.debug("ItemCommands group initialized")
 
-    # admin-only command
-    @app_commands.command(name="fake_admin", description="Activate admin mode")
-    async def on_fake_admin(self, interaction: discord.Interaction):
-        # pass a hardcoded item name to the handler
-        await item_use.handle(interaction, "fake_admin", target=interaction.user)
+    # self-items (on_author)
+    @app_commands.command(name="flex", description="Did you know, that man can produce milk?")
+    @app_commands.describe(item="Item to use on yourself")
+    @app_commands.autocomplete(item=self_items_autocomplete)
+    async def on_flex(self, interaction: discord.Interaction, item: str):
+        await item_use.handle(interaction, item, target=interaction.user)
 
-    # command for everything else
-    @app_commands.command(name="use", description="Use item on user")
-    @app_commands.describe(member="Target", item="Item")
-    @app_commands.autocomplete(item=items_autocomplete)
-    async def on_use_target(self, interaction: discord.Interaction, member: discord.Member, item: str):
+    # everything else: thrown at another user
+    @app_commands.command(name="yeet", description="Throw an item at another user")
+    @app_commands.describe(member="Target", item="Item to throw")
+    @app_commands.autocomplete(item=others_items_autocomplete)
+    async def on_yeet(self, interaction: discord.Interaction, member: discord.Member, item: str):
         await item_use.handle(interaction, item, target=member)
+
+    # admin: create a new catalog item
+    @app_commands.command(name="add", description="Add a new item (admin only)")
+    async def on_add(self, interaction: discord.Interaction):
+        await add_effect.handle(interaction)
+
+    # admin: edit an existing catalog item
+    @app_commands.command(name="change", description="Change an existing item (admin only)")
+    @app_commands.describe(item="Item to change")
+    @app_commands.autocomplete(item=catalog_items_autocomplete)
+    async def on_change(self, interaction: discord.Interaction, item: str):
+        await change_effect.handle(interaction, item)
 
 
 async def setup(bot):
