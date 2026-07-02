@@ -1,7 +1,7 @@
 import discord
 from discord import app_commands
 
-from config import GUILDS
+from config import GUILDS, data_dict
 from helpers.logger_config import internal_logger as logger
 from controllers.items import item_use, add_effect, change_effect
 from helpers.auto_options import (
@@ -38,15 +38,19 @@ class ItemCommands(app_commands.Group):
         await item_use.handle(interaction, item, target=member)
 
     # admin: create a new catalog item
-    @app_commands.command(name="add", description="Add a new item (admin only)")
+    @app_commands.command(
+        **data_dict['item']['add']['metadata'])
     async def on_add(self, interaction: discord.Interaction):
+        logger.debug(f"item add command called by {interaction.user}")
         await add_effect.handle(interaction)
 
     # admin: edit an existing catalog item
-    @app_commands.command(name="change", description="Change an existing item (admin only)")
-    @app_commands.describe(item="Item to change")
+    @app_commands.command(
+        **data_dict['item']['change']['metadata'])
+    @app_commands.describe(**data_dict['item']['change']['description'])
     @app_commands.autocomplete(item=catalog_items_autocomplete)
     async def on_change(self, interaction: discord.Interaction, item: str):
+        logger.debug(f"item change command called by {interaction.user} for item: {item}")
         await change_effect.handle(interaction, item)
 
 
