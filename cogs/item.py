@@ -3,8 +3,12 @@ from discord import app_commands
 
 from config import GUILDS
 from helpers.logger_config import internal_logger as logger
-from controllers.items import item_use
-from helpers.auto_options import self_items_autocomplete, others_items_autocomplete
+from controllers.items import item_use, add_effect, change_effect
+from helpers.auto_options import (
+    self_items_autocomplete,
+    others_items_autocomplete,
+    catalog_items_autocomplete,
+)
 
 
 class ItemCommands(app_commands.Group):
@@ -32,6 +36,18 @@ class ItemCommands(app_commands.Group):
     @app_commands.autocomplete(item=others_items_autocomplete)
     async def on_yeet(self, interaction: discord.Interaction, member: discord.Member, item: str):
         await item_use.handle(interaction, item, target=member)
+
+    # admin: create a new catalog item
+    @app_commands.command(name="add", description="Add a new item (admin only)")
+    async def on_add(self, interaction: discord.Interaction):
+        await add_effect.handle(interaction)
+
+    # admin: edit an existing catalog item
+    @app_commands.command(name="change", description="Change an existing item (admin only)")
+    @app_commands.describe(item="Item to change")
+    @app_commands.autocomplete(item=catalog_items_autocomplete)
+    async def on_change(self, interaction: discord.Interaction, item: str):
+        await change_effect.handle(interaction, item)
 
 
 async def setup(bot):
