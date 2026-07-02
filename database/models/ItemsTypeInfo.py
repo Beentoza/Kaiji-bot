@@ -1,13 +1,5 @@
-from sqlalchemy import Column, Enum, Integer, ForeignKey, SmallInteger, BigInteger, Text
+from sqlalchemy import Column, Integer, ForeignKey, SmallInteger, BigInteger, Text, Boolean
 from database.factory import Base
-import enum
-
-
-class ItemType(enum.Enum):
-    frog = "frog"
-    gentlemen = "gentlemen"
-    fake_admin = "fake_admin"
-    snowball = "snowball"
 
 
 class ItemTypeInfo(Base):
@@ -16,9 +8,12 @@ class ItemTypeInfo(Base):
     __tablename__ = 'item_types'
 
     id = Column(Integer, primary_key=True, index=True)
-    item_type = Column(Enum(ItemType))
-    role = Column(BigInteger)
-    emoji = Column(Text)
+    item_name = Column(Text, nullable=True)
+    in_casino = Column(Boolean, nullable=True)
+    role = Column(BigInteger, nullable=True) # placeholder if there's no role yet
+    emoji = Column(Text, nullable=True)
+    on_author = Column(Boolean, nullable=True)
+    duration = Column(Integer, nullable=True)
 
 
 class UserItem(Base):

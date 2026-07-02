@@ -220,6 +220,50 @@
         "participated": 1,
         "not_participated": 0
       }
+    },
+    "profile": {
+      "metadata": {
+        "name": "profile",
+        "description": "Check info about yourself"
+      }
+    }
+  },
+  "casino": {
+    "casino": {
+      "metadata": {
+        "name": "casino",
+        "description": "check your luck or be retard"
+      }
+    }
+  },
+  "stats": {
+    "games": {
+      "metadata": {
+        "name": "games",
+        "description": "your market / double / lottery stats"
+      },
+      "show": {
+        "Yes": 0,
+        "No": 1
+      }
+    },
+    "data": {
+      "metadata": {
+        "name": "data",
+        "description": "Check version of bot"
+      }
+    },
+    "leaderboard": {
+      "metadata": {
+        "name": "leaderboard",
+        "description": "see richest players"
+      }
+    },
+    "jackpot": {
+      "metadata": {
+        "name": "jackpot",
+        "description": "see jackpot money amount"
+      }
     }
   },
   "test": {
