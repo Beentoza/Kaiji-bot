@@ -96,19 +96,18 @@ async def logic(interaction_user_id, interaction_guild_id, amount: int):
         if delta is None:
             return DoubleResult(outcome=DoubleOutcome.DRAW)
 
-        jackpot_cut = int(amount * 0.05)
-
         await db_logs.log_try_event(session=uow.session, user_id=user_id, event_type="double", amount=amount, profit=delta,
                                     server_id=interaction_guild_id)
         await db_user.add_user_balance(session=uow.session, user_id=user_id, amount=delta)
         await db_user.update_winstreak(session=uow.session, user_id=user_id, win=int(won))
         if won:
+            jackpot_cut = int(amount * 0.05)
             await db_economy.add_to_jackpot(session=uow.session, amount=jackpot_cut)
 
     if won:
-        logger.info(f"User won {delta}")
+        logger.info(f"{user_id} won {delta}")
         return DoubleResult(outcome=DoubleOutcome.WON, amount=amount, delta=delta, jackpot_cut=jackpot_cut)
-    logger.info(f"User lost {delta}")
+    logger.info(f"{user_id} lost {delta}")
     return DoubleResult(outcome=DoubleOutcome.LOST, amount=amount, delta=delta)
 
 

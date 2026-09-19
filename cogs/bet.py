@@ -10,7 +10,7 @@ from helpers.auto_options import (dynamic_autocomplete, dynamic_autocomplete_ope
 
 class BetCommands(app_commands.Group):
     """
-    Commands for auth users or auth users. Can make/end/cancel bets
+    Commands for admin or auth users. Can make/end/cancel bets
     """
 
     def __init__(self):
