@@ -6,3 +6,6 @@ __pycache__/
 *.pyc
 combined.log
 experiments
+tests
+.github
+.git
