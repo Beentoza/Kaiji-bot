@@ -11,6 +11,9 @@ from controllers.try_cmds.market import (
 )
 
 
+pytestmark = pytest.mark.unit
+
+
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
 # Fixed "now"; the test seeds market_timestamp = NOW - time_since_last.

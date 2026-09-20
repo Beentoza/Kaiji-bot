@@ -6,6 +6,9 @@ import pytest
 from database.db_functions.db_outcome_logic import calculate_payouts
 
 
+pytestmark = pytest.mark.unit
+
+
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
 

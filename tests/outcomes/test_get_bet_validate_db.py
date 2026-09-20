@@ -1,6 +1,11 @@
+import pytest
+
 from database.models.Bets import Bet
 from database.models.models import BetStatus
 from database.db_functions.db_outcome_logic import get_bet_and_validate
+
+
+pytestmark = pytest.mark.integration
 
 
 async def test_get_bet_and_validate_finds_existing_bet(db_session):

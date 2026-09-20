@@ -10,11 +10,15 @@ from database.models.Balances import Balance
 from database.models.Statuses import Status
 from database.models.UserData import UserData
 
+from controllers.try_cmds import double
 from controllers.try_cmds.double import (
     logic as double_logic,
     DoubleResult,
     DoubleOutcome,
 )
+
+
+pytestmark = pytest.mark.integration
 
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
@@ -61,6 +65,19 @@ async def _get_balance(db_session, discord_id: int) -> int:
     return res.scalar_one()
 
 
+def _patch_roll(monkeypatch, outcome: str, luck_factor: float) -> None:
+    """Arranges the roll that produces the scenario's outcome under the CURRENT constants.
+
+    The scenario states the outcome, never the number - retuning LOWEST/HIGHEST/
+    DOUBLE_CHANCE_TO_WIN can't silently turn a winning roll into a losing one.
+    """
+    low, high = double._roll_bounds(luck_factor)
+    roll = {"won": low, "lost": high, "draw": double.win_threshold()}.get(outcome)
+    if roll is None:          # banned / validation - the code never rolls
+        return
+    monkeypatch.setattr("controllers.try_cmds.double.random.randint", lambda *_: roll)
+
+
 # ---------- tests ----------
 
 @pytest.mark.parametrize("scenario_name", [
@@ -80,11 +97,7 @@ async def test_double_scenarios(
         balance=setup["balance"], status=setup["status"], luck_factor=setup["luck_factor"],
     )
 
-    if scenario["mock_random"] is not None:
-        monkeypatch.setattr(
-            "controllers.try_cmds.double.random.randint",
-            lambda *args: scenario["mock_random"],
-        )
+    _patch_roll(monkeypatch, expected["outcome"], setup["luck_factor"])
 
     # === ACT ===
     result = await double_logic(

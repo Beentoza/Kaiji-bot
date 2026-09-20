@@ -16,8 +16,13 @@ from database.models.models import BetStatus
 
 from database.db_functions.db_bet import process_place_bet
 from database.db_functions.db_outcome_logic import get_results_and_apply_payouts
+from database.uow import UnitOfWork
+from helpers.BetTypes import BetPlaceType
 
 # starting balance, same as db_user.add_new_user (expected.balances are computed from it)
+pytestmark = pytest.mark.integration
+
+
 START_BALANCE = 100
 
 
@@ -84,16 +89,18 @@ async def _place_participations(scenario, data):
     if scenario["bet"] is None:
         return
     bet_info = scenario["bet"]
-    for p in scenario["participations"]:
-        user_discord_id = data["users"][p["user"]]["discord_id"]
-        result = await process_place_bet(
-            user_discord_id=user_discord_id,
-            bet_theme=bet_info["theme"],
-            choice_text=p["choice"],
-            amount=p["amount"],
-            server_id=bet_info["server_id"],
-        )
-        assert result == "success", f"failed to place bet for {p['user']}: {result}"
+    async with UnitOfWork() as uow:
+        for p in scenario["participations"]:
+            user_discord_id = data["users"][p["user"]]["discord_id"]
+            result = await process_place_bet(
+                session=uow.session,
+                user_discord_id=user_discord_id,
+                bet_theme=bet_info["theme"],
+                choice_text=p["choice"],
+                amount=p["amount"],
+                server_id=bet_info["server_id"],
+            )
+            assert result.outcome is BetPlaceType.SUCCESS, f"failed to place bet for {p['user']}: {result}"
 
 
 async def _get_balance(db_session, discord_id: int) -> int:

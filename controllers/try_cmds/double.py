@@ -33,11 +33,27 @@ class DoubleResult:
     jackpot_cut: int = 0
 
 
+def win_threshold() -> int:
+    """The roll a player has to stay under to win.
+
+    example: min: 1, high: 10, 40%
+    1 + (10-1)*0.4 = 4.6 -> 4 - only 4 numbers will pass.
+    """
+    span = constants.HIGHEST_DOUBLE_PROB - constants.LOWEST_DOUBLE_PROB
+    return round(constants.LOWEST_DOUBLE_PROB + span * constants.DOUBLE_CHANCE_TO_WIN * 0.01)
+
+
+def _roll_bounds(luck_factor: float) -> tuple[int, int]:
+    """
+    The range the player's roll is drawn from.
+    """
+    double_luck = min(luck_factor * int(constants.LOWEST_DOUBLE_PROB * 0.5), int(constants.HIGHEST_DOUBLE_PROB * 0.5))
+    return constants.LOWEST_DOUBLE_PROB, constants.HIGHEST_DOUBLE_PROB - int(double_luck)
+
+
 def _resolve_double_outcome(double_prob: int, amount: int) -> tuple[None, None] | tuple[int, bool]:
     """Deciding win or lose from probability, returns delta and won flag"""
-    # example: min: 1, high: 10, 40%
-    # 1 + (10-1)*0.4 = 4.6 - only 4 numbers will pass
-    prob_to_win = constants.LOWEST_DOUBLE_PROB + (constants.HIGHEST_DOUBLE_PROB - constants.LOWEST_DOUBLE_PROB) * constants.DOUBLE_CHANCE_TO_WIN * 0.01
+    prob_to_win = win_threshold()
     if double_prob > prob_to_win:
         delta = - amount
         won = False
@@ -90,8 +106,7 @@ async def logic(interaction_user_id, interaction_guild_id, amount: int):
         if amount > 0.75 * balance:
             return DoubleResult(outcome=DoubleOutcome.TOO_HIGH)
 
-        double_luck = min(luck_factor * int(constants.LOWEST_DOUBLE_PROB*0.5), int(constants.HIGHEST_DOUBLE_PROB*0.5))
-        double_prob = random.randint(constants.LOWEST_DOUBLE_PROB + int(double_luck), constants.HIGHEST_DOUBLE_PROB)
+        double_prob = random.randint(*_roll_bounds(luck_factor))
         delta, won = _resolve_double_outcome(double_prob, amount)
         if delta is None:
             return DoubleResult(outcome=DoubleOutcome.DRAW)
