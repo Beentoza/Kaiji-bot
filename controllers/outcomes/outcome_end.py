@@ -3,6 +3,7 @@ from database.db_functions import db_user, db_outcome_logic
 from helpers.logger_config import internal_logger as logger
 import discord
 from helpers.user_functions import check_new_user
+from helpers.BetTypes import BetEndType
 import constants
 
 
@@ -20,32 +21,31 @@ async def handle(interaction, embed, outcome_name, choice):
         return await interaction.followup.send("Only authorized users can end outcomes")
 
     try:
-        outcome_data, coefficient, status, channel_id, message_id = await db_outcome_logic.get_results_and_apply_payouts(
-            bet_theme=outcome_name,
-            current_time=time.time(),
+        result = await db_outcome_logic.settle_bet(
+            outcome_name=outcome_name,
             server_id=interaction.guild_id,
-            win_choice=choice) # removing bet in DB,
+            win_option=choice,
+            time_now=time.time()) # removing bet in DB,
 
 
         answers = {
-                    'bet_not_found': "This outcome doesn't exist",
-                    'open_bet': "This outcome still open",
-                    'not_option': "Can't find outcome with this options",
-                    'no_participants': "No participants found",
-                    "no_winners_or_losers": "Bet ended with no winners or no losers. Refunded.",
-                    "error": "Error"
+                    BetEndType.BET_NOT_FOUND: "This outcome doesn't exist",
+                    BetEndType.OPEN_BET: "This outcome still open",
+                    BetEndType.NOT_OPTION: "Can't find outcome with this options",
+                    BetEndType.NO_PARTICIPANTS: "No participants found",
+                    BetEndType.NO_WINNERS_OR_LOSERS: "Bet ended with no winners or no losers. Refunded.",
                 }
-        msg = answers.get(status, "Error")
-        failed_statuses = ['bet_not_found', 'not_option', "error"]
+        msg = answers.get(result.outcome, "Error")
+        failed_statuses = (BetEndType.BET_NOT_FOUND, BetEndType.NOT_OPTION)
 
-        if status in failed_statuses:
+        if result.outcome in failed_statuses:
             return await interaction.followup.send(f"{interaction.user.mention} outcome wasn't ended due to {msg}")
 
 
 
 
-        channel = interaction.client.get_channel(channel_id)
-        message = await channel.fetch_message(message_id)
+        channel = interaction.client.get_channel(result.channel_id)
+        message = await channel.fetch_message(result.message_id)
         if not message.embeds:
             return await interaction.followup.send("Error. Can't find outcome message")
         logger.debug(f"changing existent embed {outcome_name}")
@@ -58,7 +58,7 @@ async def handle(interaction, embed, outcome_name, choice):
         started_embed.color = discord.Color.dark_gray()
         started_embed.add_field(name='Status', value=f':no_entry_sign:  Bet closed due {msg}')
         await message.edit(embed=started_embed)
-        if status != 'success': # if no participants or no loosers and winers then we don't need to make a loosers and winners list
+        if result.outcome is not BetEndType.SUCCESS: # if no participants or no loosers and winers then we don't need to make a loosers and winners list
             return await interaction.followup.send(f'Bet **{outcome_name}** ended!')
 
 
@@ -68,7 +68,7 @@ async def handle(interaction, embed, outcome_name, choice):
         losers_list = []
         winners_list = []
 
-        for bet_choice, users in outcome_data.items():
+        for bet_choice, users in result.payouts.items():
             for user_id, amount in users.items():
                 amount = int(amount)
                 if bet_choice == choice:
@@ -91,7 +91,7 @@ async def handle(interaction, embed, outcome_name, choice):
             pings.append(f'<@{uid}>')
             member = interaction.guild.get_member(uid) or await interaction.guild.fetch_member(uid)
             name = member.display_name if member else f"User {uid}"
-            profit = int(amount * coefficient)
+            profit = int(amount * result.koef)
             embed_green.add_field(name=name, value=f'{amount} + {profit}', inline=False)
 
 
@@ -101,7 +101,7 @@ async def handle(interaction, embed, outcome_name, choice):
         await interaction.followup.send(embed=embed_red)
         await interaction.followup.send(embed=embed_green)
 
-        if channel_id is not None and message_id is not None:
+        if result.channel_id is not None and result.message_id is not None:
             started_embed.color = discord.Color.dark_gray()
             started_embed.add_field(name='Status', value=f'⏲️ The outcome has already been played')
             await message.edit(embed=started_embed)
@@ -117,4 +117,4 @@ async def handle(interaction, embed, outcome_name, choice):
 
     except Exception as e:
         await interaction.followup.send("Error occurred", ephemeral=True)
-        logger.warning(f"Error occurred when tried to close bet {outcome_name}: {e}")
+        logger.exception(f"Error occurred when tried to close bet {outcome_name}: {e}")

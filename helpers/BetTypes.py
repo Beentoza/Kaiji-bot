@@ -39,3 +39,23 @@ class BetWithdrawType(enum.Enum):
 class BetWithdrawResult:
     """Logic function returning"""
     outcome: BetWithdrawType
+
+
+class BetEndType(enum.Enum):
+    """A types of settle_bet / refund_bet result"""
+    SUCCESS = "success"
+    CANCELLED = "cancelled"
+    BET_NOT_FOUND = "bet_not_found"
+    OPEN_BET = "open_bet"
+    NOT_OPTION = "not_option"
+    NO_PARTICIPANTS = "no_participants"
+    NO_WINNERS_OR_LOSERS = "no_winners_or_losers"
+
+@dataclasses.dataclass(frozen=True)
+class BetEndResult:
+    """Logic function returning"""
+    outcome: BetEndType
+    payouts: dict = None
+    koef: float = 0
+    channel_id: int = None
+    message_id: int = None

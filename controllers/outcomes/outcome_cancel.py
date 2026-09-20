@@ -1,8 +1,8 @@
-import time
 from database.db_functions import db_user, db_outcome_logic
 from helpers.logger_config import internal_logger as logger
 import discord
 from helpers.user_functions import check_new_user
+from helpers.BetTypes import BetEndType
 import constants
 
 async def handle(interaction, outcome):
@@ -20,28 +20,23 @@ async def handle(interaction, outcome):
 
 
     try:
-        _, _, status, channel_id, message_id = await db_outcome_logic.get_results_and_apply_payouts(
-            bet_theme=outcome,# name of outcome
-            current_time=time.time(), #
-            server_id=interaction.guild_id,
-            time_check=False,
-            action='refund') # removing bet in DB,
+        result = await db_outcome_logic.refund_bet(
+            outcome_name=outcome,# name of outcome
+            server_id=interaction.guild_id) # removing bet in DB,
 
         answers = {
-            "cancelled": f"{interaction.user.mention} cancelled outcome {outcome}",
-            "no_participants": f"{interaction.user.mention} cancelled outcome {outcome}",
-            "open_bet": f"{interaction.user.mention} this outcome still open",
-            "bet_not_found": f"{interaction.user.mention} outcome with this name doesn't exist",
-            "error": f"{interaction.user.mention} unknown error happened",
+            BetEndType.CANCELLED: f"{interaction.user.mention} cancelled outcome {outcome}",
+            BetEndType.NO_PARTICIPANTS: f"{interaction.user.mention} cancelled outcome {outcome}",
+            BetEndType.BET_NOT_FOUND: f"{interaction.user.mention} outcome with this name doesn't exist",
         }
-        logger.info(f"Outcome **{outcome}** cancelled by {interaction.user.id}, status {status}")
-        message_for_user = answers.get(status, "error")
+        logger.info(f"Outcome **{outcome}** cancelled by {interaction.user.id}, status {result.outcome}")
+        message_for_user = answers.get(result.outcome, f"{interaction.user.mention} unknown error happened")
 
-        if status == 'cancelled' or status == 'no_participants':
-            if channel_id is not None and message_id is not None:
+        if result.outcome in (BetEndType.CANCELLED, BetEndType.NO_PARTICIPANTS):
+            if result.channel_id is not None and result.message_id is not None:
 
-                channel = interaction.client.get_channel(channel_id)
-                message = await channel.fetch_message(message_id)
+                channel = interaction.client.get_channel(result.channel_id)
+                message = await channel.fetch_message(result.message_id)
                 if message.embeds:
                     logger.info(f"changing existent embed {outcome}")
 
@@ -59,4 +54,4 @@ async def handle(interaction, outcome):
         await interaction.followup.send(message_for_user)
     except Exception as e:
         await interaction.followup.send("Error occurred", ephemeral=True)
-        logger.warning(f"Error occurred when tried to cancel outcome {outcome}: {e}")
+        logger.exception(f"Error occurred when tried to cancel outcome {outcome}: {e}")

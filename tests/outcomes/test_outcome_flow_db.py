@@ -15,7 +15,8 @@ from database.models.Bets import Bet
 from database.models.models import BetStatus
 
 from database.db_functions.db_bet import process_place_bet
-from database.db_functions.db_outcome_logic import get_results_and_apply_payouts
+from database.db_functions.db_outcome_logic import settle_bet, refund_bet
+from helpers.BetTypes import BetEndType
 from database.uow import UnitOfWork
 from helpers.BetTypes import BetPlaceType
 
@@ -162,27 +163,30 @@ async def test_settlement_scenarios(db_session, data, mock_log_bet_event, scenar
         bet_theme = scenario["bet"]["theme"]
         server_id = scenario["bet"]["server_id"]
 
-    settlement_kwargs = {
-        "bet_theme": bet_theme,
-        "current_time": settlement_time,
-        "server_id": server_id,
-        "win_choice": settlement["win_choice"],
-    }
-    if "action" in settlement:
-        settlement_kwargs["action"] = settlement["action"]
-
-    outcome, koef, status, channel_id, message_id = await get_results_and_apply_payouts(**settlement_kwargs)
+    # the operation is now the function name, not an `action` flag
+    if settlement.get("action") == "refund":
+        result = await refund_bet(
+            outcome_name=bet_theme,
+            server_id=server_id,
+        )
+    else:
+        result = await settle_bet(
+            outcome_name=bet_theme,
+            server_id=server_id,
+            win_option=settlement["win_choice"],
+            time_now=settlement_time,
+        )
 
     # === ASSERT === all 5 return values + balances
-    assert status == expected["status"], (
-        f"[{scenario_name}] status: expected {expected['status']!r}, got {status!r}"
+    assert result.outcome is BetEndType(expected["status"]), (
+        f"[{scenario_name}] status: expected {expected['status']!r}, got {result.outcome!r}"
     )
-    assert koef == pytest.approx(expected["koef"]), (
-        f"[{scenario_name}] koef: expected {expected['koef']}, got {koef}"
+    assert result.koef == pytest.approx(expected["koef"]), (
+        f"[{scenario_name}] koef: expected {expected['koef']}, got {result.koef}"
     )
-    assert channel_id == expected["channel_id"]
-    assert message_id == expected["message_id"]
-    assert outcome == _normalize_outcome(expected["outcome"]), (
+    assert result.channel_id == expected["channel_id"]
+    assert result.message_id == expected["message_id"]
+    assert result.payouts == _normalize_outcome(expected["outcome"]), (
         f"[{scenario_name}] outcome mismatch"
     )
 

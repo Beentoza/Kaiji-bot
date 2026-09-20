@@ -6,83 +6,128 @@ from database.models.BetParticipation import BetParticipation
 from database.models.OutcomeEvents import OutcomeEvents, OutcomeEventType
 from database.models.BetEvents import BetEvents, BetEventType
 from database.models.models import BetStatus
+from helpers.BetTypes import BetEndType, BetEndResult
 from helpers.logger_config import internal_logger as logger
 from sqlalchemy import select, update, delete, bindparam, func
 
 
-async def get_results_and_apply_payouts(bet_theme: str, current_time: float = None, server_id: int = None, win_choice: str = None, action: str = None, time_check: bool = True, session=None):
-    """Ending bet:
-    current_time: only if bet ending with a result. Need to give it only after outcome closed
-    server_id: necessary, don't needed for automatic closing
-    win_choice: don't needed only if action = refund
-    time_check: don't needed only if cancelling bet
-    session: if provided, uses existing session/transaction; otherwise creates its own
+
+async def settle_bet(outcome_name, server_id, win_option, time_now):
+    """Close a bet with a winning option and pay the winners out.
+
+    Returns (outcome, koef, status, channel_id, message_id).
     """
-    if session:
-        return await _get_results_and_apply_payouts(session, bet_theme, current_time, server_id, win_choice, action, time_check)
+    async with SessionLocal() as session:
+        async with session.begin():
+            outcome_info = await find_outcome(session, outcome_name, server_id)
 
-    try:
-        async with SessionLocal() as session:
-            async with session.begin():
-                return await _get_results_and_apply_payouts(session, bet_theme, current_time, server_id, win_choice, action, time_check)
-    except Exception as e:
-        logger.warning(e)
-        return None, 0, "error", None, None
+            outcome_info, status = validate_outcome(outcome_info, time_now, win_option)
+            if not outcome_info:
+                return BetEndResult(outcome=status)
+
+            rows = await check_participants(session, outcome_name, outcome_info)
+            if not rows:
+                return BetEndResult(
+                    outcome=BetEndType.NO_PARTICIPANTS,
+                    channel_id=outcome_info["channel_id"],
+                    message_id=outcome_info["message_id"],
+                )
+
+            calc = calculate_payouts(rows, outcome_info["opts"], win_option)
+
+            if calc["action"] == "refund":
+                logger.info(f"No winners or loosers for outcome {outcome_name}")
+                await execute_refund_step(session, outcome_info["id"], rows, 'refunded')
+                return BetEndResult(
+                    outcome=BetEndType.NO_WINNERS_OR_LOSERS,
+                    channel_id=outcome_info["channel_id"],
+                    message_id=outcome_info["message_id"],
+                )
+
+            # calculate_payouts only ever returns "refund" or "payout"
+            logger.debug("execute payout step")
+            await execute_payout_step(session, outcome_info["id"], rows, outcome_info["win_index"])
+            logger.info(f"Successfully ended outcome {outcome_name}")
+            return BetEndResult(
+                outcome=BetEndType.SUCCESS,
+                payouts=calc["outcome"],
+                koef=calc["koef"],
+                channel_id=outcome_info["channel_id"],
+                message_id=outcome_info["message_id"],
+            )
 
 
-async def _get_results_and_apply_payouts(session, bet_theme, current_time, server_id, win_choice, action, time_check):
-    logger.debug("Started work bet_and_validate")
-    bet_info, status = await get_bet_and_validate(session, bet_theme, current_time, win_choice, server_id, time_check, action)
-    logger.debug("Checked")
-    if not bet_info:
-        logger.info(f"Didn't found outcome {bet_theme}")
-        return None, 0, status, None, None
+async def refund_bet(outcome_name, server_id, action='cancelled'):
+    """Give every participant their stake back and remove the bet.
 
-    logger.debug("get participation data")
+    action: the OutcomeEvents type written to the log -- 'cancelled' or 'refunded'.
+    Returns (outcome, koef, status, channel_id, message_id).
+    """
+    async with SessionLocal() as session:
+        async with session.begin():
+            outcome_info = await find_outcome(session, outcome_name, server_id)
+            if not outcome_info:
+                return BetEndResult(outcome=BetEndType.BET_NOT_FOUND)
+
+            rows = await check_participants(session, outcome_name, outcome_info)
+            if not rows:
+                return BetEndResult(
+                    outcome=BetEndType.NO_PARTICIPANTS,
+                    channel_id=outcome_info["channel_id"],
+                    message_id=outcome_info["message_id"],
+                )
+
+            logger.info(f"Starting to refund {outcome_name}")
+            await execute_refund_step(session, outcome_info["id"], rows, action)
+            return BetEndResult(
+                outcome=BetEndType.CANCELLED,
+                channel_id=outcome_info["channel_id"],
+                message_id=outcome_info["message_id"],
+            )
+
+
+
+
+async def find_outcome(session, outcome_name, server_id) -> dict | None:
+    """Returns outcome info"""
+    stmt = select(Bet).where(Bet.theme == outcome_name)
+    if server_id:
+        stmt = stmt.where(Bet.server_id == server_id)
+    bet = (await session.execute(stmt)).scalar_one_or_none()
+    if not bet:
+        logger.info(f"Didn't found outcome {outcome_name}")
+        return None
+    return {
+        "id": bet.id,
+        "opts": bet.options,
+        "end_timestamp": bet.end_timestamp,
+        "channel_id": bet.channel_id,
+        "message_id": bet.message_id,
+    }
+
+
+async def check_participants(session, outcome_name, bet_info):
     rows = await get_participation_data(session, bet_info["id"])
 
     if not rows:
-        logger.info(f"Didn't find participants for outcome {bet_theme}")
+        logger.info(f"Didn't find participants for outcome {outcome_name}")
         await delete_outcome(session, bet_info["id"])
-        return None, 0, "no_participants", bet_info["channel_id"], bet_info["message_id"]
-
-    if action == 'refund':
-        logger.info(f"Starting to refund {bet_theme}")
-        await execute_refund_step(session, bet_info["id"], rows, 'cancelled')
-        return None, 0, "cancelled", bet_info["channel_id"], bet_info["message_id"]
-
-    calc = calculate_payouts(rows, bet_info["opts"], win_choice)
-
-    if calc["action"] == "refund":
-        logger.info(f"No winners or loosers for outcome {bet_theme}")
-        await execute_refund_step(session, bet_info["id"], rows, 'refunded')
-        return None, 0, "no_winners_or_losers", bet_info["channel_id"], bet_info["message_id"]
-
-    if calc["action"] == "payout":
-        logger.debug("execute payout step")
-        await execute_payout_step(session, bet_info["id"], rows, bet_info["win_index"])
-        logger.info(f"Successfully ended outcome {bet_theme}")
-        return calc["outcome"], calc["koef"], "success", bet_info["channel_id"], bet_info["message_id"]
+        return None
+    return rows
 
 
-async def get_bet_and_validate(session, bet_theme: str, current_time: float, choice: str, server_id: int, time_check: bool, action: str = None) -> tuple[dict | None, str]:
-    """Checking if bet exists, if it, returning bet_id, options and win index option"""
-    stmt = select(Bet).where(Bet.theme == bet_theme)
-    if server_id:
-        stmt = stmt.where(Bet.server_id == server_id)
-    res = await session.execute(stmt)
-    bet = res.scalar_one_or_none()
 
-    if not bet: return None, "bet_not_found"
-    if time_check:
-        if bet.end_timestamp > current_time: return None, "open_bet"
+def validate_outcome(outcome_info: dict, current_time: float, choice: str) -> tuple[dict | None, BetEndType]:
+    """Validating outcome: check for options, open_outcome, no such option"""
+    if not outcome_info: return None, BetEndType.BET_NOT_FOUND
+    if outcome_info['end_timestamp'] > current_time: return None, BetEndType.OPEN_BET
 
-    opts = bet.options
-    if action != 'refund' and choice not in opts:
-        return None, "not_option"
+    opts = outcome_info['opts']
+    if choice not in opts: return None, BetEndType.NOT_OPTION
 
-    win_index = opts.index(choice) if choice in opts else None
-    return {"id": bet.id, "opts": opts, "win_index": win_index, "channel_id": bet.channel_id, "message_id": bet.message_id}, "ok"
+    outcome_info['win_index'] = opts.index(choice)
+
+    return outcome_info, BetEndType.SUCCESS
 
 
 async def get_participation_data(session, bet_id: int) -> list[dict]:
@@ -310,11 +355,18 @@ async def process_in_progress_bets() -> dict:
 
                 logger.debug(f"Found {len(invalid_ids)} bets, which should expire")
 
+                # refund_bet opens its own session, and we are already inside one --
+                # so call the session-taking steps it is built from. We already hold the
+                # Bet row, so there is nothing to look up by theme again.
+                invalid_set = set(invalid_ids)
                 for bet in bets:
-                    if bet.id in invalid_ids:
-                        await get_results_and_apply_payouts(
-                            bet_theme=bet.theme, action='refund', time_check=False, session=session
-                        )
+                    if bet.id not in invalid_set:
+                        continue
+                    rows = await get_participation_data(session, bet.id)
+                    if rows:
+                        await execute_refund_step(session, bet.id, rows, 'cancelled')
+                    else:
+                        await delete_outcome(session, bet.id)
 
                 active_bets_objects = []
                 if valid_ids:
