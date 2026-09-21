@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Text, JSON, BigInteger, SmallInteger
+from sqlalchemy import Column, Integer, Text, JSON, BigInteger, SmallInteger, UniqueConstraint
 from database.models.models import BetStatus
 from sqlalchemy.orm import relationship
 from database.factory import Base
@@ -16,3 +16,4 @@ class Bet(Base):
     status = Column(SmallInteger, default=BetStatus.ACTIVE.value)
 
     participations = relationship("BetParticipation", back_populates="bet")
+    __table_args__ = (UniqueConstraint("server_id", "theme", name="uq_bets_server_theme"),)

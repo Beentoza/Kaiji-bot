@@ -11,6 +11,9 @@ from controllers.try_cmds.lottery import (
 )
 
 
+pytestmark = pytest.mark.unit
+
+
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
 # Fixed "now"; the test seeds lottery_timestamp = NOW - time_since_last.

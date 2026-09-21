@@ -7,7 +7,6 @@ import discord
 from database.db_functions import db_items
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
-from helpers.user_functions import check_new_user
 import constants
 
 
@@ -137,7 +136,6 @@ async def _play_slot_machine(message, symbols: list, final_row: list) -> discord
 async def handle(interaction):
     await interaction.response.defer(thinking=True)
     logger.debug("Casino handler started work")
-    await check_new_user.ensure_user_registered(interaction)
 
     try:
         result = await logic(interaction.user.id)

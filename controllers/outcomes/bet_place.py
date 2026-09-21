@@ -1,6 +1,5 @@
 from helpers.logger_config import internal_logger as logger
 from database.db_functions import db_user, db_bet
-from helpers.user_functions import check_new_user
 from database.uow import UnitOfWork
 from helpers.user_functions.check_ban import is_banned
 from helpers.BetTypes import BetPlaceType, BetPlaceResult
@@ -67,7 +66,6 @@ async def handle(interaction, bet: str, choice: str, amount: int):
         await interaction.response.defer(thinking=True)
         logger.debug(f"Started work for user {interaction.user.id}, {bet}, {choice}, {amount}")
 
-        await check_new_user.ensure_user_registered(interaction)
 
         result = await logic(interaction.user.id, interaction.guild_id, amount, bet, choice)
 

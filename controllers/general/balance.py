@@ -2,6 +2,7 @@ import enum
 import dataclasses
 
 from database.db_functions import db_user
+from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 from helpers.user_functions import check_new_user
 import constants
@@ -36,7 +37,8 @@ async def logic(target_user_id, is_bot, is_self):
         logger.info(f"Non-existent user check by third party: {target_user_id}")
         return BalanceResult(outcome=BalanceOutcome.NOT_REGISTERED)
 
-    current_balance = await db_user.get_user_balance(target_user_id)
+    async with UnitOfWork() as uow:
+        current_balance = await db_user.get_user_balance(uow.session, target_user_id)
     if current_balance < 0:  # Easter egg if someone breaks it
         logger.warning(f"Negative balance detected for user {target_user_id}: {current_balance}")
 
@@ -66,7 +68,6 @@ async def handle(interaction, embed, user):
     """Send balance to user"""
     await interaction.response.defer(thinking=True)
     logger.debug("Handle started work")
-    await check_new_user.ensure_user_registered(interaction)
     try:
         if user is None:  # no target picked -> show requester's own balance
             user = interaction.user

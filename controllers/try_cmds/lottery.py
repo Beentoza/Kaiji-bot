@@ -6,7 +6,6 @@ from database.db_functions import db_economy, db_logs
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 from helpers.time_handler import get_timestamp
-from helpers.user_functions.check_new_user import ensure_user_registered
 from helpers.user_functions.check_ban import is_banned
 from helpers import timed_tasks
 import constants
@@ -146,7 +145,6 @@ async def handle(interaction):
     """User paying 1 D every time to buy ticket and has changed to win jackpot or place of prizes"""
     await interaction.response.defer(thinking=True)
     logger.debug("Handler started work")
-    await ensure_user_registered(interaction)
     try:
         result = await logic(
             interaction_user_id=interaction.user.id,

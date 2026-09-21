@@ -6,7 +6,6 @@ from database.db_functions import db_user, db_economy, db_time
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 from helpers.time_handler import get_timestamp, DAY
-from helpers.user_functions import check_new_user
 from helpers.user_functions.check_ban import is_banned
 from helpers import timed_tasks
 
@@ -71,7 +70,6 @@ async def handle(interaction):
     """Per a day gives user some amount of money"""
     await interaction.response.defer(thinking=True)
     logger.debug("Handler started work")
-    await check_new_user.ensure_user_registered(interaction)
     try:
         result = await logic(interaction_user_id=interaction.user.id, interaction_guild_id=interaction.guild.id)
         message = _format_daily_message(result, interaction.user.mention)

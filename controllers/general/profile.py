@@ -1,4 +1,5 @@
 from database.db_functions import db_user
+from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 import time
 from datetime import datetime
@@ -17,14 +18,15 @@ statuses = {0:"```ansi\n[31m🔒 Banned[0m\n```", 1: "User", 2: "Gentlemen", 3
 async def handle(interaction):
     await interaction.response.defer(thinking=True)
     try:
-        user_info_data = await db_user.get_overall_user_info(interaction.user.id)
-        if user_info_data is None or not user_info_data[0]:
-            return await interaction.followup.send("Nothing to show yet")
+        async with UnitOfWork() as uow:
+            user_info_data = await db_user.get_overall_user_info(uow.session, interaction.user.id)
+            if user_info_data is None or not user_info_data[0]:
+                return await interaction.followup.send("Nothing to show yet")
 
-        lst = []
-        first_embed = await first_page(interaction, user_info_data)
+            lst = []
+            first_embed = await first_page(interaction, user_info_data)
 
-        balance_history_data, balance_before = await db_user.get_week_balance_history(interaction.user.id)
+            balance_history_data, balance_before = await db_user.get_week_balance_history(uow.session, interaction.user.id)
         second_embed, second_file = await second_page(interaction, balance_history_data, balance_before)
 
         lst.append((first_embed, None))

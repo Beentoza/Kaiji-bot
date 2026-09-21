@@ -1,6 +1,5 @@
 from sqlalchemy.exc import IntegrityError
 
-from database.factory import SessionLocal
 from database.models.Users import User
 from database.models.Balances import Balance
 from database.models.Bets import Bet
@@ -33,47 +32,45 @@ async def log_bet_event(session, user_id: int, outcome_id: int, amount: int, opt
 
 
 
-async def withdraw_bet_for_user(bet_theme: str, user_id: int, server_id, time_now: int) -> BetWithdrawResult:
+async def withdraw_bet_for_user(session, bet_theme: str, user_id: int, server_id, time_now: int) -> BetWithdrawResult:
     try:
-        async with SessionLocal() as session:
-            async with session.begin():
-                internal_id = (await session.scalar(select(User).where(User.discord_id == user_id))).id
-                stmt = (
-                    select(Bet.end_timestamp, BetParticipation)
-                    .join(Bet, Bet.id == BetParticipation.bet_id)
-                    .where(
-                        BetParticipation.user_id == internal_id,
-                        Bet.theme == bet_theme,
-                        Bet.server_id == server_id)
-                )
-                result = await session.execute(stmt)
+        internal_id = (await session.scalar(select(User).where(User.discord_id == user_id))).id
+        stmt = (
+            select(Bet.end_timestamp, BetParticipation)
+            .join(Bet, Bet.id == BetParticipation.bet_id)
+            .where(
+                BetParticipation.user_id == internal_id,
+                Bet.theme == bet_theme,
+                Bet.server_id == server_id)
+        )
+        result = await session.execute(stmt)
 
-                row = result.one_or_none()
+        row = result.one_or_none()
 
-                if row is None:
-                    return BetWithdrawResult(outcome=BetWithdrawType.BET_NOT_FOUND)
-                end_timestamp, participation = row
-                if end_timestamp < time_now:
-                    return BetWithdrawResult(outcome=BetWithdrawType.CLOSED)
+        if row is None:
+            return BetWithdrawResult(outcome=BetWithdrawType.BET_NOT_FOUND)
+        end_timestamp, participation = row
+        if end_timestamp < time_now:
+            return BetWithdrawResult(outcome=BetWithdrawType.CLOSED)
 
-                await session.execute(update(BetEvents).where(
-                    BetEvents.user_id == internal_id,
-                    BetEvents.outcome_id == participation.bet_id,
-                    BetEvents.event_type == BetEventType.placed
-                ).values(event_type=BetEventType('withdrawn')))
+        await session.execute(update(BetEvents).where(
+            BetEvents.user_id == internal_id,
+            BetEvents.outcome_id == participation.bet_id,
+            BetEvents.event_type == BetEventType.placed
+        ).values(event_type=BetEventType('withdrawn')))
 
-                await session.execute(update(Balance)
-                    .where(Balance.id == internal_id)
-                    .values(balance=Balance.balance + participation.money)
-                )
-                await session.execute(delete(BetParticipation).where(
-                    BetParticipation.bet_id == participation.bet_id,
-                    BetParticipation.user_id == participation.user_id
-                ))
-                return BetWithdrawResult(outcome=BetWithdrawType.SUCCESS)
+        await session.execute(update(Balance)
+            .where(Balance.id == internal_id)
+            .values(balance=Balance.balance + participation.money)
+        )
+        await session.execute(delete(BetParticipation).where(
+            BetParticipation.bet_id == participation.bet_id,
+            BetParticipation.user_id == participation.user_id
+        ))
+        return BetWithdrawResult(outcome=BetWithdrawType.SUCCESS)
     except Exception as e:
         logger.warning(e)
-        return BetWithdrawResult(outcome=BetWithdrawType.ERROR)
+        raise
 
 
 

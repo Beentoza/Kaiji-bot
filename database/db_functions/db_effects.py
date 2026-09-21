@@ -1,6 +1,5 @@
 import time
 from sqlalchemy import select, delete
-from database.factory import SessionLocal
 from database.models.UserEffects import UserEffects
 from helpers.logger_config import internal_logger as logger
 
@@ -29,33 +28,31 @@ async def add_user_effect(session, discord_id: int, guild_id: int, effect_name: 
     session.add(new_effect)
     return True
 
-async def check_effects_for_expired() -> list[dict]:
+async def check_effects_for_expired(session) -> list[dict]:
     """Find expired effects, delete them from the DB and return the list"""
     current_time = time.time()
 
-    async with SessionLocal() as session:
-        async with session.begin():
-            stmt = select(UserEffects).where(UserEffects.timeout <= current_time)
-            res = await session.execute(stmt)
-            expired_effects = res.scalars().all()
+    stmt = select(UserEffects).where(UserEffects.timeout <= current_time)
+    res = await session.execute(stmt)
+    expired_effects = res.scalars().all()
 
-            if not expired_effects:
-                return []
+    if not expired_effects:
+        return []
 
-            # also pull guild_id from the object
-            result_data = [
-                {
-                    "user_id": e.user_id,
-                    "guild_id": e.guild_id,
-                    "effect_name": e.effect_name
-                }
-                for e in expired_effects
-            ]
+    # also pull guild_id from the object
+    result_data = [
+        {
+            "user_id": e.user_id,
+            "guild_id": e.guild_id,
+            "effect_name": e.effect_name
+        }
+        for e in expired_effects
+    ]
 
-            ids_to_delete = [e.id for e in expired_effects]
-            await session.execute(
-                delete(UserEffects).where(UserEffects.id.in_(ids_to_delete))
-            )
+    ids_to_delete = [e.id for e in expired_effects]
+    await session.execute(
+        delete(UserEffects).where(UserEffects.id.in_(ids_to_delete))
+    )
 
-            logger.debug(f"Removed {len(ids_to_delete)} expired effects")
-            return result_data
+    logger.debug(f"Removed {len(ids_to_delete)} expired effects")
+    return result_data

@@ -1,4 +1,5 @@
 from database.db_functions import db_user, db_other
+from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 import numpy as np
 from database.models.Events import EventType
@@ -44,11 +45,14 @@ async def handle(interaction):
     """
     try:
         await interaction.response.defer(thinking=True)
-        user_data = await db_user.get_user_chances_data(interaction.user.id)
-        if user_data is None:
-            return await interaction.followup.send("I don't have idea who you are")
+        async with UnitOfWork() as uow:
+            user_data = await db_user.get_user_chances_data(uow.session, interaction.user.id)
+            if user_data is None:
+                return await interaction.followup.send("I don't have idea who you are")
+
+            data = await db_other.get_chances_data(uow.session)
+
         user_percents = get_data(user_data)
-        data = await db_other.get_chances_data()
         percents = get_data(data)
         user_plus = np.mean(user_percents) - np.mean(percents)
         if user_plus > 0:

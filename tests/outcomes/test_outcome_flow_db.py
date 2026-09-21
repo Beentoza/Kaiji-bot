@@ -15,9 +15,15 @@ from database.models.Bets import Bet
 from database.models.models import BetStatus
 
 from database.db_functions.db_bet import process_place_bet
-from database.db_functions.db_outcome_logic import get_results_and_apply_payouts
+from database.db_functions.db_outcome_logic import settle_bet, refund_bet
+from helpers.BetTypes import BetEndType
+from database.uow import UnitOfWork
+from helpers.BetTypes import BetPlaceType
 
 # starting balance, same as db_user.add_new_user (expected.balances are computed from it)
+pytestmark = pytest.mark.integration
+
+
 START_BALANCE = 100
 
 
@@ -84,16 +90,18 @@ async def _place_participations(scenario, data):
     if scenario["bet"] is None:
         return
     bet_info = scenario["bet"]
-    for p in scenario["participations"]:
-        user_discord_id = data["users"][p["user"]]["discord_id"]
-        result = await process_place_bet(
-            user_discord_id=user_discord_id,
-            bet_theme=bet_info["theme"],
-            choice_text=p["choice"],
-            amount=p["amount"],
-            server_id=bet_info["server_id"],
-        )
-        assert result == "success", f"failed to place bet for {p['user']}: {result}"
+    async with UnitOfWork() as uow:
+        for p in scenario["participations"]:
+            user_discord_id = data["users"][p["user"]]["discord_id"]
+            result = await process_place_bet(
+                session=uow.session,
+                user_discord_id=user_discord_id,
+                bet_theme=bet_info["theme"],
+                choice_text=p["choice"],
+                amount=p["amount"],
+                server_id=bet_info["server_id"],
+            )
+            assert result.outcome is BetPlaceType.SUCCESS, f"failed to place bet for {p['user']}: {result}"
 
 
 async def _get_balance(db_session, discord_id: int) -> int:
@@ -155,27 +163,30 @@ async def test_settlement_scenarios(db_session, data, mock_log_bet_event, scenar
         bet_theme = scenario["bet"]["theme"]
         server_id = scenario["bet"]["server_id"]
 
-    settlement_kwargs = {
-        "bet_theme": bet_theme,
-        "current_time": settlement_time,
-        "server_id": server_id,
-        "win_choice": settlement["win_choice"],
-    }
-    if "action" in settlement:
-        settlement_kwargs["action"] = settlement["action"]
-
-    outcome, koef, status, channel_id, message_id = await get_results_and_apply_payouts(**settlement_kwargs)
+    # the operation is now the function name, not an `action` flag
+    if settlement.get("action") == "refund":
+        result = await refund_bet(
+            outcome_name=bet_theme,
+            server_id=server_id,
+        )
+    else:
+        result = await settle_bet(
+            outcome_name=bet_theme,
+            server_id=server_id,
+            win_option=settlement["win_choice"],
+            time_now=settlement_time,
+        )
 
     # === ASSERT === all 5 return values + balances
-    assert status == expected["status"], (
-        f"[{scenario_name}] status: expected {expected['status']!r}, got {status!r}"
+    assert result.outcome is BetEndType(expected["status"]), (
+        f"[{scenario_name}] status: expected {expected['status']!r}, got {result.outcome!r}"
     )
-    assert koef == pytest.approx(expected["koef"]), (
-        f"[{scenario_name}] koef: expected {expected['koef']}, got {koef}"
+    assert result.koef == pytest.approx(expected["koef"]), (
+        f"[{scenario_name}] koef: expected {expected['koef']}, got {result.koef}"
     )
-    assert channel_id == expected["channel_id"]
-    assert message_id == expected["message_id"]
-    assert outcome == _normalize_outcome(expected["outcome"]), (
+    assert result.channel_id == expected["channel_id"]
+    assert result.message_id == expected["message_id"]
+    assert result.payouts == _normalize_outcome(expected["outcome"]), (
         f"[{scenario_name}] outcome mismatch"
     )
 

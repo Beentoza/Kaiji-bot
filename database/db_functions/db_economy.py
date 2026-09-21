@@ -1,4 +1,3 @@
-from database.factory import SessionLocal
 from database.models.Users import User
 from database.models.Balances import Balance
 from database.models.Statuses import Status
@@ -11,14 +10,13 @@ from sqlalchemy import select, update, true
 import time
 
 
-async def get_jackpot_info() -> str | None:
-    async with SessionLocal() as session:
-        try:
-            result = await session.execute(select(Jackpot.money).limit(1))
-            return result.scalar()
-        except Exception as e:
-            logger.error(f"Error: {e}")
-            return None
+async def get_jackpot_info(session) -> str | None:
+    try:
+        result = await session.execute(select(Jackpot.money).limit(1))
+        return result.scalar()
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        raise
 
 
 async def add_to_jackpot(session, amount: int):

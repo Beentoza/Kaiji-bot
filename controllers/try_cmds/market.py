@@ -8,7 +8,6 @@ from database.uow import UnitOfWork
 from helpers.time_handler import get_timestamp, MARKET_TIMER
 from helpers.logger_config import internal_logger as logger
 from helpers import timed_tasks
-from helpers.user_functions.check_new_user import ensure_user_registered
 from helpers.user_functions.check_ban import is_banned
 import constants
 
@@ -171,7 +170,6 @@ async def handle(interaction, amount, test_mode=False, test_data=None):
     """User getting multiplier from amount and some of the winnings going to jackpot or if user lost money disappearing"""
     await interaction.response.defer(thinking=True)
     logger.debug("Handler started work")
-    await ensure_user_registered(interaction)
     try:
         result = await logic(
             interaction_user_id=interaction.user.id,

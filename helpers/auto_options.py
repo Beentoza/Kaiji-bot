@@ -5,6 +5,7 @@ from helpers.logger_config import internal_logger as logger
 from helpers import work_with_parameters
 from helpers.roles_and_rights import roles_for_certain_roles
 from database.db_functions import db_items, db_outcome
+from database.uow import UnitOfWork
 
 
 async def dynamic_autocomplete_open(interaction: Interaction, current: str):
@@ -167,7 +168,8 @@ async def market_autocomplete(interaction: Interaction, current: str, ) -> list[
 async def catalog_items_autocomplete(interaction: Interaction, current: str):
     """Autocomplete for admin item-edit commands. Shows every catalog item type."""
     try:
-        items = await db_items.get_catalog_items()
+        async with UnitOfWork() as uow:
+            items = await db_items.get_catalog_items(uow.session)
 
         choices = []
         for item in items:
@@ -186,7 +188,8 @@ async def catalog_items_autocomplete(interaction: Interaction, current: str):
 
 async def _inventory_choices(interaction: Interaction, current: str, on_author: bool):
     """Owned items filtered by whether they're used on self (on_author) or on others"""
-    inventory = await db_items.get_user_inventory(interaction.user.id)
+    async with UnitOfWork() as uow:
+        inventory = await db_items.get_user_inventory(uow.session, interaction.user.id)
 
     choices = []
     for item in inventory:

@@ -3,8 +3,8 @@ import dataclasses
 
 import constants
 from database.db_functions import db_user
+from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
-from helpers.user_functions import check_new_user
 from helpers.user_functions.status_names import give_role_name
 
 
@@ -27,7 +27,8 @@ async def logic(target_user_id, is_self):
     if not is_self:
         return StatusResult(outcome=StatusOutcome.OTHER_USER)
 
-    status = await db_user.get_user_status(target_user_id)
+    async with UnitOfWork() as uow:
+        status = await db_user.get_user_status(uow.session, target_user_id)
     return StatusResult(outcome=StatusOutcome.SUCCESS, status_id=status)
 
 
@@ -46,7 +47,6 @@ def _format_status_message(result, display_name):
 async def handle(interaction, member):
     await interaction.response.defer(thinking=True)
     logger.debug(f"Controller called for user {member.id}")
-    await check_new_user.ensure_user_registered(interaction)
     result = await logic(target_user_id=member.id, is_self=member.id == interaction.user.id)
     message = _format_status_message(result, member.display_name)
     await interaction.followup.send(message)
