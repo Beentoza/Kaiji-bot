@@ -68,7 +68,6 @@ async def handle(interaction, embed, user):
     """Send balance to user"""
     await interaction.response.defer(thinking=True)
     logger.debug("Handle started work")
-    await check_new_user.ensure_user_registered(interaction)
     try:
         if user is None:  # no target picked -> show requester's own balance
             user = interaction.user

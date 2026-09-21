@@ -2,7 +2,7 @@ from helpers.logger_config import internal_logger as logger
 from database.db_functions import db_user, db_bet
 from database.uow import UnitOfWork
 from helpers.time_handler import get_timestamp
-from helpers.user_functions import check_new_user, check_ban
+from helpers.user_functions import check_ban
 from helpers.BetTypes import BetWithdrawType, BetWithdrawResult
 
 def _format_message(result, mention):
@@ -42,7 +42,6 @@ async def handle(interaction, outcome):
     try:
         logger.debug(f"Started work for user {interaction.user.id}, {outcome}")
         await interaction.response.defer(thinking=True)
-        await check_new_user.ensure_user_registered(interaction) # cheecking if user in DB
 
         result = await logic(interaction.user.id, interaction.guild_id, outcome)
         message_for_user = _format_message(result, interaction.user.mention)

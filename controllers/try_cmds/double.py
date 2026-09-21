@@ -5,7 +5,6 @@ import random
 from database.db_functions import db_user, db_economy, db_internal, db_logs
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
-from helpers.user_functions import check_new_user
 from helpers.user_functions.check_ban import is_banned
 import constants
 
@@ -129,7 +128,6 @@ async def logic(interaction_user_id, interaction_guild_id, amount: int):
 async def handle(interaction, amount):
     await interaction.response.defer(thinking=True)
     logger.debug("Handler started work")
-    await check_new_user.ensure_user_registered(interaction)
     try:
         result = await logic(interaction_user_id=interaction.user.id, interaction_guild_id=interaction.guild_id, amount=amount)
         if not result:

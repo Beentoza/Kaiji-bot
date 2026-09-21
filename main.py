@@ -6,6 +6,7 @@ from discord.ext import commands
 
 from config import TOKEN, run_migrations
 from helpers.logger_config import internal_logger as logger
+from helpers.command_tree import KaijiTree, send_onboarding
 from helpers.timed_tasks import (check_open_bets_status, set_bot_reference,
                                  check_bets_liquidity_task, auto_flush_timer,
                                  add_chances_data_into_DB, check_expired_effects_task)
@@ -33,7 +34,7 @@ EXTENSIONS = (
 
 class KaijiBot(commands.Bot):
     def __init__(self):
-        super().__init__(command_prefix="$", intents=intents)
+        super().__init__(command_prefix="$", intents=intents, tree_cls=KaijiTree)
 
     async def setup_hook(self):
         for ext in EXTENSIONS:
@@ -65,6 +66,11 @@ async def on_ready():
         add_chances_data_into_DB.start()
     except Exception as e:
         logger.error(f"Error during bot launch/sync: {e}", exc_info=True)
+
+
+@bot.event
+async def on_app_command_completion(interaction, command):
+    await send_onboarding(interaction, command)
 
 
 try:

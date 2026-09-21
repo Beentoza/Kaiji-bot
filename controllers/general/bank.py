@@ -4,7 +4,6 @@ import dataclasses
 from database.db_functions import db_economy
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
-from helpers.user_functions import check_new_user
 
 
 class BankOutcome(enum.Enum):
@@ -34,7 +33,6 @@ async def handle(interaction):
     """Handler sending info about amount Đ in bank (jackpot)"""
     await interaction.response.defer(thinking=True)
     logger.debug("Handler started work")
-    await check_new_user.ensure_user_registered(interaction)
     result = await logic()
     message = _format_bank_message(result)
     await interaction.followup.send(message)

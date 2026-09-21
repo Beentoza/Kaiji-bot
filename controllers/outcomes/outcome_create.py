@@ -3,7 +3,6 @@ from database.db_functions import db_user, db_outcome
 from discord import ui
 from helpers.logger_config import internal_logger as logger
 import time
-from helpers.user_functions import check_new_user
 import constants
 
 numeral = {0: 'st', 1: 'nd', 2: 'rd'}
@@ -71,7 +70,6 @@ async def handle(interaction,preset, theme, choices, timer, meas):
     """
     await interaction.response.defer(thinking=True, ephemeral=True)
 
-    await check_new_user.ensure_user_registered(interaction) # adding new user
 
     async with UnitOfWork() as uow:
         status = await db_user.get_user_status(uow.session, interaction.user.id)

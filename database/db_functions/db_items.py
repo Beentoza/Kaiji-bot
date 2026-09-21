@@ -78,7 +78,7 @@ async def get_item_settings(session, item_name):
 
 async def add_item_to_user(session, user_id: int, item: str, amount: int = 1):
     """Grant `amount` of an item to a user. The caller owns the session/transaction.
-    Assumes the user is already registered (callers run ensure_user_registered first)."""
+    Assumes the user is already registered (the command tree registers every author before a command runs)."""
     internal_id = await session.scalar(
         select(User.id).where(User.discord_id == user_id)
     )
