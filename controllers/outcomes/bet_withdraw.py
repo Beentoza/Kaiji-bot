@@ -1,5 +1,6 @@
 from helpers.logger_config import internal_logger as logger
 from database.db_functions import db_user, db_bet
+from database.uow import UnitOfWork
 from helpers.time_handler import get_timestamp
 from helpers.user_functions import check_new_user, check_ban
 from helpers.BetTypes import BetWithdrawType, BetWithdrawResult
@@ -21,18 +22,19 @@ def _format_message(result, mention):
 
 
 async def logic(user_id: int, guild_id: int, outcome_name: str):
-    # getting status, checking if user banned
-    status = await db_user.get_user_status(user_id)
+    async with UnitOfWork() as uow:
+        # getting status, checking if user banned
+        status = await db_user.get_user_status(uow.session, user_id)
 
-    logger.debug(f"Checking if user {user_id} banned")
+        logger.debug(f"Checking if user {user_id} banned")
 
-    if check_ban.is_banned(status):
-        logger.debug(f"User {user_id} banned")
-        return BetWithdrawResult(outcome=BetWithdrawType.BANNED)
+        if check_ban.is_banned(status):
+            logger.debug(f"User {user_id} banned")
+            return BetWithdrawResult(outcome=BetWithdrawType.BANNED)
 
-    # withdrawing bet and returning status
-    logger.debug(f"Withdrawing bet for {user_id}")
-    withdraw_status = await db_bet.withdraw_bet_for_user(outcome_name, user_id, guild_id, get_timestamp())
+        # withdrawing bet and returning status
+        logger.debug(f"Withdrawing bet for {user_id}")
+        withdraw_status = await db_bet.withdraw_bet_for_user(uow.session, outcome_name, user_id, guild_id, get_timestamp())
     return withdraw_status
 
 

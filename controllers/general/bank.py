@@ -2,6 +2,7 @@ import enum
 import dataclasses
 
 from database.db_functions import db_economy
+from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 from helpers.user_functions import check_new_user
 
@@ -17,7 +18,8 @@ class BankResult:
 
 
 async def logic():
-    jackpot_amount = await db_economy.get_jackpot_info()
+    async with UnitOfWork() as uow:
+        jackpot_amount = await db_economy.get_jackpot_info(uow.session)
     return BankResult(outcome=BankOutcome.SUCCESS, jackpot=int(jackpot_amount))
 
 

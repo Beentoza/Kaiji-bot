@@ -176,7 +176,8 @@ async def handle(
         if not await _is_admin(interaction.user.id):
             return await interaction.followup.send("You don't have permission to do this.", ephemeral=True)
 
-        settings = await db_items.get_item_settings(item_name)
+        async with UnitOfWork() as uow:
+            settings = await db_items.get_item_settings(uow.session, item_name)
         if settings is None:
             return await interaction.followup.send("That item wasn't found.", ephemeral=True)
 

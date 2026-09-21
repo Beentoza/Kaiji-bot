@@ -73,7 +73,8 @@ async def handle(interaction,preset, theme, choices, timer, meas):
 
     await check_new_user.ensure_user_registered(interaction) # adding new user
 
-    status = await db_user.get_user_status(interaction.user.id)
+    async with UnitOfWork() as uow:
+        status = await db_user.get_user_status(uow.session, interaction.user.id)
     if status < constants.STATUS_REQUIRED_OUTCOME_COMMANDS:
         return await interaction.followup.send("You can't create outcomes :(")
     if preset == 1:

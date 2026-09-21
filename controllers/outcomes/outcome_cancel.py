@@ -1,4 +1,5 @@
 from database.db_functions import db_user, db_outcome_logic
+from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 import discord
 from helpers.user_functions import check_new_user
@@ -13,7 +14,8 @@ async def handle(interaction, outcome):
     if not await check_new_user.is_user_registered(interaction.user.id): # if we didn't find ID in DB, we don't adding
         # him. Instead, just saying he can't use this command
         return await interaction.followup.send("Only authorized users can make bets")
-    status_level = await db_user.get_user_status(interaction.user.id)
+    async with UnitOfWork() as uow:
+        status_level = await db_user.get_user_status(uow.session, interaction.user.id)
     if status_level < constants.STATUS_REQUIRED_OUTCOME_COMMANDS: # if user status under authorizerd
         return await interaction.followup.send("Only authorized users can make bets")
 

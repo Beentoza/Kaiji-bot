@@ -2,6 +2,7 @@ import enum
 import dataclasses
 
 from database.db_functions import db_other
+from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 
 
@@ -20,7 +21,8 @@ class LeaderboardResult:
 
 
 async def logic():
-    data = await db_other.get_leaderboard()
+    async with UnitOfWork() as uow:
+        data = await db_other.get_leaderboard(uow.session)
     return LeaderboardResult(outcome=LeaderboardOutcome.SUCCESS, players=data)
 
 

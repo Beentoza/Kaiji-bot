@@ -52,25 +52,25 @@ def _format_item_use_message(result, target_mention):
 
 
 async def logic(interaction_user_id, interaction_guild_id, item_name: str, target_id: int):
-    if not await db_user.check_user_exists(user_id=interaction_user_id):
-        return ItemUseResult(outcome=ItemUseOutcome.NO_USER, item_name=item_name)
-
-    settings = await db_items.get_item_settings(item_name)
-    if settings is None:
-        logger.warning(f"User {interaction_user_id} tried to use unknown item {item_name}")
-        return ItemUseResult(outcome=ItemUseOutcome.UNKNOWN_ITEM, item_name=item_name)
-
-    if settings.on_author:
-        target_id = interaction_user_id
-
-    role_id = settings.role
-    # duration is in hours, effects work in minutes
-    duration_minutes = (settings.duration or 1) * 60
-
     try:
-        # consume + effect share one transaction: if the effect is already
-        # active we raise to roll back the consume, so the item is not lost
+        # the whole use is one transaction: if the effect is already active
+        # we raise to roll back the consume, so the item is not lost
         async with UnitOfWork() as uow:
+            if not await db_user.check_user_exists(uow.session, user_id=interaction_user_id):
+                return ItemUseResult(outcome=ItemUseOutcome.NO_USER, item_name=item_name)
+
+            settings = await db_items.get_item_settings(uow.session, item_name)
+            if settings is None:
+                logger.warning(f"User {interaction_user_id} tried to use unknown item {item_name}")
+                return ItemUseResult(outcome=ItemUseOutcome.UNKNOWN_ITEM, item_name=item_name)
+
+            if settings.on_author:
+                target_id = interaction_user_id
+
+            role_id = settings.role
+            # duration is in hours, effects work in minutes
+            duration_minutes = (settings.duration or 1) * 60
+
             success = await db_items.consume_item(uow.session, interaction_user_id, item_name)
             if not success:
                 logger.warning(f"User {interaction_user_id} tried to use {item_name} but has 0 in DB")

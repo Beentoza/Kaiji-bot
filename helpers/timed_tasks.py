@@ -8,6 +8,7 @@ from database.models.Events import EventType
 from discord.ext import tasks
 import discord
 from database.db_functions import db_effects, db_other, db_outcome_logic, db_items, db, db_logs
+from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 
 
@@ -23,31 +24,32 @@ target_time = dt.time(hour=19, minute=50, tzinfo=dt.timezone.utc)
 async def add_chances_data_into_DB():
     """Function which getting chances of all players into DB"""
     logger.info("Adding chances data to DB")
-    data = await db_other.get_chances_data() # getting info of market, lottery and double commands
-    if not data:
-        logger.info("No chances data to aggregate, skipping")
-        return
-    user_data = np.array(data)
+    async with UnitOfWork() as uow:
+        data = await db_other.get_chances_data(uow.session) # getting info of market, lottery and double commands
+        if not data:
+            logger.info("No chances data to aggregate, skipping")
+            return
+        user_data = np.array(data)
 
-    market_info = (user_data[:, 2])[user_data[:, 0] == EventType.market]
-    market_average_multiplier = np.mean(market_info)
+        market_info = (user_data[:, 2])[user_data[:, 0] == EventType.market]
+        market_average_multiplier = np.mean(market_info)
 
-    lottery_info = (user_data[:, 1])[user_data[:, 0] == EventType.lottery]
-    lottery_prizes = [
-        lottery_info == constants.LOTTERY_FIFTH_PLACE,
-        lottery_info == constants.LOTTERY_FOURTH_PLACE,
-        lottery_info == constants.LOTTERY_THIRD_PLACE,
-        lottery_info == constants.LOTTERY_SECOND_PLACE,
-        lottery_info >= constants.LOTTERY_FIFTH_PLACE,
-    ]
-    lottery_points = [125, 250, 500, 1000, 2000]
-    points_array = np.select(lottery_prizes, lottery_points, default=0) # for every win getting points, should also divide it to uses probably
-    lottery_total_points = np.sum(points_array)
+        lottery_info = (user_data[:, 1])[user_data[:, 0] == EventType.lottery]
+        lottery_prizes = [
+            lottery_info == constants.LOTTERY_FIFTH_PLACE,
+            lottery_info == constants.LOTTERY_FOURTH_PLACE,
+            lottery_info == constants.LOTTERY_THIRD_PLACE,
+            lottery_info == constants.LOTTERY_SECOND_PLACE,
+            lottery_info >= constants.LOTTERY_FIFTH_PLACE,
+        ]
+        lottery_points = [125, 250, 500, 1000, 2000]
+        points_array = np.select(lottery_prizes, lottery_points, default=0) # for every win getting points, should also divide it to uses probably
+        lottery_total_points = np.sum(points_array)
 
-    double_info = (user_data[:, 1])[user_data[:, 0] == EventType.double]
-    total_games = len(double_info)
-    double_win_probability = (np.count_nonzero(double_info > 0) / total_games * 100) if total_games else 0
-    await db.add_chances_data(double_win_probability, lottery_total_points, market_average_multiplier)
+        double_info = (user_data[:, 1])[user_data[:, 0] == EventType.double]
+        total_games = len(double_info)
+        double_win_probability = (np.count_nonzero(double_info > 0) / total_games * 100) if total_games else 0
+        await db.add_chances_data(uow.session, double_win_probability, lottery_total_points, market_average_multiplier)
 
 
 @tasks.loop(minutes=3.0)
@@ -146,7 +148,8 @@ async def auto_flush_timer():
 
         if balance_log_buffer:
             try:
-                await db_logs.add_balance_history_into_DB(balance_log_buffer)
+                async with UnitOfWork() as uow:
+                    await db_logs.add_balance_history_into_DB(uow.session, balance_log_buffer)
                 balance_log_buffer.clear()
             except Exception as e:
                 logger.error(e)
@@ -165,56 +168,59 @@ async def add_balance_history(user_id: int, server_id: int, group: str, command:
     }
     balance_log_buffer.append(new_log)
     if len(balance_log_buffer) > 50:
-        await db_logs.add_balance_history_into_DB(balance_log_buffer)
+        async with UnitOfWork() as uow:
+            await db_logs.add_balance_history_into_DB(uow.session, balance_log_buffer)
         balance_log_buffer.clear()
 
 
 async def adding_logs_into_DB_by_command():
     global balance_log_buffer
-    await db_logs.add_balance_history_into_DB(balance_log_buffer)
+    async with UnitOfWork() as uow:
+        await db_logs.add_balance_history_into_DB(uow.session, balance_log_buffer)
     balance_log_buffer.clear()
 
 @tasks.loop(minutes=1.0)
 async def check_expired_effects_task():
     try:
-        expired = await db_effects.check_effects_for_expired()
+        async with UnitOfWork() as uow:
+            expired = await db_effects.check_effects_for_expired(uow.session)
 
-        if not expired:
-            return
+            if not expired:
+                return
 
-        logger.info(f"Processing {len(expired)} expired effects")
+            logger.info(f"Processing {len(expired)} expired effects")
 
-        for effect in expired:
-            u_id = effect["user_id"]
-            g_id = effect["guild_id"]
-            name = effect["effect_name"]
+            for effect in expired:
+                u_id = effect["user_id"]
+                g_id = effect["guild_id"]
+                name = effect["effect_name"]
 
-            logger.debug(f"Effect {name} expired for user {u_id} in guild {g_id}")
+                logger.debug(f"Effect {name} expired for user {u_id} in guild {g_id}")
 
-            role_id = await db_items.get_item_role(name)
+                role_id = await db_items.get_item_role(uow.session, name)
 
-            if role_id is not None:
-                guild = _bot_ref.get_guild(g_id)
-                if not guild:
-                    logger.warning(f"Guild {g_id} not found")
-                    continue
+                if role_id is not None:
+                    guild = _bot_ref.get_guild(g_id)
+                    if not guild:
+                        logger.warning(f"Guild {g_id} not found")
+                        continue
 
-                role = guild.get_role(role_id)
-                member = guild.get_member(u_id)
+                    role = guild.get_role(role_id)
+                    member = guild.get_member(u_id)
 
-                if member and role:
-                    try:
-                        await member.remove_roles(role)
-                        logger.info(f"Removed {name} (role {role_id}) from {u_id}")
-                    except discord.Forbidden:
-                        logger.error(f"No permissions to remove role {role_id} in {g_id}")
-                    except Exception as e:
-                        logger.error(f"Error removing role: {e}")
-                else:
-                    logger.debug(f"Member or role not found for {name} removal")
+                    if member and role:
+                        try:
+                            await member.remove_roles(role)
+                            logger.info(f"Removed {name} (role {role_id}) from {u_id}")
+                        except discord.Forbidden:
+                            logger.error(f"No permissions to remove role {role_id} in {g_id}")
+                        except Exception as e:
+                            logger.error(f"Error removing role: {e}")
+                    else:
+                        logger.debug(f"Member or role not found for {name} removal")
 
-            elif name == "frog":
-                pass
+                elif name == "frog":
+                    pass
 
     except Exception as e:
         logger.error(f"Error in check_expired_effects_task: {e}")
