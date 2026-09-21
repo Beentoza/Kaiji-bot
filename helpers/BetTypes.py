@@ -59,3 +59,22 @@ class BetEndResult:
     koef: float = 0
     channel_id: int = None
     message_id: int = None
+
+
+class BetCreateType(enum.Enum):
+    """A types of outcome_create result"""
+    NO_RIGHTS = "no_rights"
+    TOO_FEW_OPTIONS = "too_few_options"
+    BAD_TIMER = "bad_timer"
+    ALREADY_EXISTS = "already_exists"
+    VALID = "valid"  # checks passed, the preview can be shown
+    CREATED = "created"
+    ERROR = "error"
+
+@dataclasses.dataclass(frozen=True)
+class BetCreateResult:
+    """Logic function returning"""
+    outcome: BetCreateType
+    choices: tuple = None  # tuple, not list: frozen doesn't protect a list's contents
+    end_timestamp: int = None
+    bet_id: int = None
