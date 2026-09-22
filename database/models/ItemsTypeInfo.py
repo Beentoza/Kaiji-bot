@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, ForeignKey, SmallInteger, BigInteger, Text, Boolean
+from sqlalchemy import Column, Integer, BigInteger, Text, Boolean
 from database.factory import Base
 
 
@@ -16,12 +16,4 @@ class ItemTypeInfo(Base):
     duration = Column(Integer, nullable=True)
 
 
-class UserItem(Base):
-    """Per-user inventory — how many of an item a user owns.
-    A row is deleted once item_count drops to 0 (don't waste space)."""
-    __tablename__ = 'user_items'
 
-    id = Column(BigInteger, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    item_id = Column(Integer, ForeignKey("item_types.id"))
-    item_count = Column(SmallInteger, default=0)

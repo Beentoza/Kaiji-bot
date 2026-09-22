@@ -13,10 +13,11 @@ from database.models.Events import Events
 from database.models.UserData import UserData
 from database.models.BalanceHistory import BalanceHistory
 from database.models.ChancesData import ChancesData
-from database.models.ItemsTypeInfo import ItemTypeInfo, UserItem
+from database.models.ItemsTypeInfo import ItemTypeInfo
+from database.models.UserItems import UserItems
 from database.models.UserEffects import UserEffects
 
 __all__ = ["User", "Balance", "Status", "Timestamp", "Bet", "BetParticipation",
            "Jackpot", "WorldState", "BetEvents", "OutcomeEvents", "Events", "UserData",
-           "BalanceHistory", "ChancesData", "ItemTypeInfo", "UserItem",
+           "BalanceHistory", "ChancesData", "ItemTypeInfo", "UserItems",
            "UserEffects"]
