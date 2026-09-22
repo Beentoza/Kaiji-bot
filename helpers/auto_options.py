@@ -186,14 +186,15 @@ async def catalog_items_autocomplete(interaction: Interaction, current: str):
         return []
 
 
-async def _inventory_choices(interaction: Interaction, current: str, on_author: bool):
-    """Owned items filtered by whether they're used on self (on_author) or on others"""
+async def _inventory_choices(interaction: Interaction, current: str, on_author: bool | None):
+    """Owned items filtered by whether they're used on self (on_author) or on others.
+    on_author=None skips the filter and shows everything the player owns."""
     async with UnitOfWork() as uow:
         inventory = await db_items.get_user_inventory(uow.session, interaction.user.id)
 
     choices = []
     for item in inventory:
-        if bool(item.on_author) != on_author:
+        if on_author is not None and bool(item.on_author) != on_author:
             continue
         if current.lower() in item.item_name.lower():
             choices.append(
@@ -218,6 +219,15 @@ async def others_items_autocomplete(interaction: Interaction, current: str):
     """Items the player throws at other users."""
     try:
         return await _inventory_choices(interaction, current, on_author=False)
+    except Exception as e:
+        logger.error(f"Autocomplete error: {e}")
+        return []
+
+
+async def owned_items_autocomplete(interaction: Interaction, current: str):
+    """Every item the player owns, whatever it's used on (for giving items away)."""
+    try:
+        return await _inventory_choices(interaction, current, on_author=None)
     except Exception as e:
         logger.error(f"Autocomplete error: {e}")
         return []
