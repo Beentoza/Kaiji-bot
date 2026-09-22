@@ -47,30 +47,34 @@ async def logic(user_id: int) -> CasinoResult:
     """Decide the spin outcome and, on a win, grant the item — all in one UoW.
 
     The outcome is fully determined here; the handler's animation only reveals it."""
-    async with UnitOfWork() as uow:
-        win_emojis = await db_items.get_winning_items(uow.session)  # {emoji: item_name}
-        symbols = list(win_emojis)
+    try:
+        async with UnitOfWork() as uow:
+            win_emojis = await db_items.get_winning_items(uow.session)  # {emoji: item_name}
+            symbols = list(win_emojis)
 
-        # the reels need at least three distinct symbols to spin
-        if len(symbols) < 3:
-            logger.warning("Casino has fewer than 3 symbols configured")
-            return CasinoResult(outcome=CasinoOutcome.ERROR)
+            # the reels need at least three distinct symbols to spin
+            if len(symbols) < 3:
+                logger.warning("Casino has fewer than 3 symbols configured")
+                return CasinoResult(outcome=CasinoOutcome.ERROR)
 
-        final_row, item_name = _decide_row(win_emojis, symbols)
+            final_row, item_name = _decide_row(win_emojis, symbols)
 
-        if item_name is not None:
-            await db_items.add_item_to_user(uow.session, user_id, item_name)
-            logger.info(f"User {user_id} won casino item {item_name}")
-            outcome = CasinoOutcome.WON
-        else:
-            outcome = CasinoOutcome.LOST
+            if item_name is not None:
+                await db_items.add_item_to_user(uow.session, user_id, item_name)
+                logger.info(f"User {user_id} won casino item {item_name}")
+                outcome = CasinoOutcome.WON
+            else:
+                outcome = CasinoOutcome.LOST
 
-    return CasinoResult(
-        outcome=outcome,
-        symbols=symbols,
-        final_row=final_row,
-        item_name=item_name,
-    )
+        return CasinoResult(
+            outcome=outcome,
+            symbols=symbols,
+            final_row=final_row,
+            item_name=item_name,
+        )
+    except Exception as e:
+        logger.exception(f"Casino error for {user_id}: {e}")
+        return CasinoResult(outcome=CasinoOutcome.ERROR)
 
 
 async def _play_slot_machine(message, symbols: list, final_row: list) -> discord.Embed:
@@ -137,12 +141,7 @@ async def handle(interaction):
     await interaction.response.defer(thinking=True)
     logger.debug("Casino handler started work")
 
-    try:
-        result = await logic(interaction.user.id)
-    except Exception as e:
-        logger.warning(f"Casino error for {interaction.user}: {e}")
-        return await interaction.followup.send("Error occurred")
-
+    result = await logic(interaction.user.id)
     if result.outcome is CasinoOutcome.ERROR:
         return await interaction.followup.send("Error occurred")
 
@@ -153,10 +152,10 @@ async def handle(interaction):
         embed.color = discord.Color.green()
         embed.description = 'Yippee'
         await message.edit(embed=embed)
-        await interaction.followup.send(
+        return await interaction.followup.send(
             f"{interaction.user.mention} You've got {result.item_name}!"
         )
     else:
         embed.color = discord.Color.red()
         embed.description = 'noop noop'
-        await message.edit(embed=embed)
+        return await message.edit(embed=embed)

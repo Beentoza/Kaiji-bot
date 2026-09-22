@@ -32,47 +32,46 @@ def _format_bet_message(result, mention):
 
 
 async def logic(user_id: int, guild_id :int, amount: int, bet: str, choice: str) -> BetPlaceResult:
-    async with UnitOfWork() as uow:
-        # getting data, checking if it's valid
-        data = await db_user.get_user_status_balance(session=uow.session, user_id=user_id)
-        logger.debug("Data received", data)
-        if not data:
-            return BetPlaceResult(outcome=BetPlaceType.ERROR)
+    try:
+        async with UnitOfWork() as uow:
+            # getting data, checking if it's valid
+            data = await db_user.get_user_status_balance(session=uow.session, user_id=user_id)
+            logger.debug("Data received", data)
+            if not data:
+                return BetPlaceResult(outcome=BetPlaceType.ERROR)
 
 
-        # checking other variables if player chose them correctly
-        status, balance = data
+            # checking other variables if player chose them correctly
+            status, balance = data
 
-        if is_banned(status):
-            logger.debug(f"User {user_id} is banned")
-            return BetPlaceResult(outcome=BetPlaceType.BANNED)
+            if is_banned(status):
+                logger.debug(f"User {user_id} is banned")
+                return BetPlaceResult(outcome=BetPlaceType.BANNED)
 
-        if amount < 1:
-            logger.debug(f"Amount {amount} is less than 0 for user {user_id}")
-            return BetPlaceResult(outcome=BetPlaceType.NEGATIVE_AMOUNT)
+            if amount < 1:
+                logger.debug(f"Amount {amount} is less than 0 for user {user_id}")
+                return BetPlaceResult(outcome=BetPlaceType.NEGATIVE_AMOUNT)
 
-        if amount > balance:
-            logger.debug(f"Amount {amount} is more than his balance {balance} for user {user_id}")
-            return BetPlaceResult(outcome=BetPlaceType.TOO_HIGH)
+            if amount > balance:
+                logger.debug(f"Amount {amount} is more than his balance {balance} for user {user_id}")
+                return BetPlaceResult(outcome=BetPlaceType.TOO_HIGH)
 
-        # placing bet in DB and getting result
-        result =  await db_bet.process_place_bet(uow.session, user_id, bet, choice, amount, guild_id)
-        logger.debug(f"Result received from DB_place_bet", result)
-        return result
+            # placing bet in DB and getting result
+            result =  await db_bet.process_place_bet(uow.session, user_id, bet, choice, amount, guild_id)
+            logger.debug(f"Result received from DB_place_bet", result)
+            return result
+    except Exception as e:
+        logger.exception(f"Failed to place bet for {user_id} on {bet}, {choice}: {amount}: {e}")
+        return BetPlaceResult(outcome=BetPlaceType.ERROR)
 
 
 async def handle(interaction, bet: str, choice: str, amount: int):
-    try:
-        await interaction.response.defer(thinking=True)
-        logger.debug(f"Started work for user {interaction.user.id}, {bet}, {choice}, {amount}")
+    await interaction.response.defer(thinking=True)
+    logger.debug(f"Started work for user {interaction.user.id}, {bet}, {choice}, {amount}")
 
+    result = await logic(interaction.user.id, interaction.guild_id, amount, bet, choice)
 
-        result = await logic(interaction.user.id, interaction.guild_id, amount, bet, choice)
-
-        message_for_user = _format_bet_message(result, interaction.user.mention)
-        logger.info(f"User {interaction.user.id} placed bet on {bet}, {choice}: {amount}")
-        return await interaction.followup.send(message_for_user)
-    except Exception as e:
-        logger.warning(f"Unexpected error {e}")
-        return await interaction.followup.send("Error happened")
+    message_for_user = _format_bet_message(result, interaction.user.mention)
+    logger.info(f"User {interaction.user.id} placed bet on {bet}, {choice}: {amount}")
+    return await interaction.followup.send(message_for_user)
 

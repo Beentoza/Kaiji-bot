@@ -82,58 +82,57 @@ def _format_double_message(result, mention):
             return f"{mention} you've won Đ{int(result.amount)}. 5% of your winnings, valued at Đ{int(result.jackpot_cut)}, has been added to the jackpot."
         case DoubleOutcome.LOST:
             return f"{mention} you've lost Đ{int(result.amount)}."
+        case DoubleOutcome.ERROR:
+            return f"{mention} some error happened, try againn later"
     return f"Error occurred"
 
 
 async def logic(interaction_user_id, interaction_guild_id, amount: int):
     user_id = interaction_user_id
+    try:
+        async with UnitOfWork() as uow:
+            data = await db_economy.get_balance_status_luckfactor(user_id, uow.session)
+            if not data:
+                return DoubleResult(outcome=DoubleOutcome.ERROR)
+            balance, status, luck_factor = data
 
-    async with UnitOfWork() as uow:
-        data = await db_economy.get_balance_status_luckfactor(user_id, uow.session)
-        if not data:
-            return DoubleResult(outcome=DoubleOutcome.ERROR)
-        balance, status, luck_factor = data
+            if is_banned(status):
+                return DoubleResult(outcome=DoubleOutcome.BANNED)
 
-        if is_banned(status):
-            return DoubleResult(outcome=DoubleOutcome.BANNED)
+            # to play user need place atleast 20 and not less than 75% of his bank
+            if amount < 0:
+                return DoubleResult(outcome=DoubleOutcome.NEGATIVE_AMOUNT)
+            if amount < 20:
+                return DoubleResult(outcome=DoubleOutcome.TOO_LOW)
+            if amount > 0.75 * balance:
+                return DoubleResult(outcome=DoubleOutcome.TOO_HIGH)
 
-        # to play user need place atleast 20 and not less than 75% of his bank
-        if amount < 0:
-            return DoubleResult(outcome=DoubleOutcome.NEGATIVE_AMOUNT)
-        if amount < 20:
-            return DoubleResult(outcome=DoubleOutcome.TOO_LOW)
-        if amount > 0.75 * balance:
-            return DoubleResult(outcome=DoubleOutcome.TOO_HIGH)
+            double_prob = random.randint(*_roll_bounds(luck_factor))
+            delta, won = _resolve_double_outcome(double_prob, amount)
+            if delta is None:
+                return DoubleResult(outcome=DoubleOutcome.DRAW)
 
-        double_prob = random.randint(*_roll_bounds(luck_factor))
-        delta, won = _resolve_double_outcome(double_prob, amount)
-        if delta is None:
-            return DoubleResult(outcome=DoubleOutcome.DRAW)
+            await db_logs.log_try_event(session=uow.session, user_id=user_id, event_type="double", amount=amount, profit=delta,
+                                        server_id=interaction_guild_id)
+            await db_user.add_user_balance(session=uow.session, user_id=user_id, amount=delta)
+            await db_user.update_winstreak(session=uow.session, user_id=user_id, win=int(won))
+            if won:
+                jackpot_cut = int(amount * 0.05)
+                await db_economy.add_to_jackpot(session=uow.session, amount=jackpot_cut)
 
-        await db_logs.log_try_event(session=uow.session, user_id=user_id, event_type="double", amount=amount, profit=delta,
-                                    server_id=interaction_guild_id)
-        await db_user.add_user_balance(session=uow.session, user_id=user_id, amount=delta)
-        await db_user.update_winstreak(session=uow.session, user_id=user_id, win=int(won))
         if won:
-            jackpot_cut = int(amount * 0.05)
-            await db_economy.add_to_jackpot(session=uow.session, amount=jackpot_cut)
-
-    if won:
-        logger.info(f"{user_id} won {delta}")
-        return DoubleResult(outcome=DoubleOutcome.WON, amount=amount, delta=delta, jackpot_cut=jackpot_cut)
-    logger.info(f"{user_id} lost {delta}")
-    return DoubleResult(outcome=DoubleOutcome.LOST, amount=amount, delta=delta)
+            logger.info(f"{user_id} won {delta}")
+            return DoubleResult(outcome=DoubleOutcome.WON, amount=amount, delta=delta, jackpot_cut=jackpot_cut)
+        logger.info(f"{user_id} lost {delta}")
+        return DoubleResult(outcome=DoubleOutcome.LOST, amount=amount, delta=delta)
+    except Exception as e:
+        logger.exception(f"{user_id}, {amount}, {e}")
+        return DoubleResult(outcome=DoubleOutcome.ERROR)
 
 
 async def handle(interaction, amount):
     await interaction.response.defer(thinking=True)
     logger.debug("Handler started work")
-    try:
-        result = await logic(interaction_user_id=interaction.user.id, interaction_guild_id=interaction.guild_id, amount=amount)
-        if not result:
-            return await interaction.followup.send("Error occurred")
-        message = _format_double_message(result, interaction.user.mention)
-        await interaction.followup.send(message)
-    except Exception as e:
-        await interaction.followup.send("Error occurred")
-        logger.warning(f"Error occurred for {interaction.user}: {e}")
+    result = await logic(interaction_user_id=interaction.user.id, interaction_guild_id=interaction.guild_id, amount=amount)
+    message = _format_double_message(result, interaction.user.mention)
+    return await interaction.followup.send(message)
