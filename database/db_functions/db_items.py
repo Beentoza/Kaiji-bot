@@ -1,6 +1,8 @@
 from database.models.Users import User
-from sqlalchemy import select
-from database.models.ItemsTypeInfo import ItemTypeInfo, UserItem
+from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from database.models.ItemsTypeInfo import ItemTypeInfo
+from database.models.UserItems import UserItems
 from helpers.logger_config import internal_logger as logger
 
 async def _item_type_id(session, item_name: str) -> int | None:
@@ -82,29 +84,17 @@ async def add_item_to_user(session, user_id: int, item: str, amount: int = 1):
     internal_id = await session.scalar(
         select(User.id).where(User.discord_id == user_id)
     )
-    if not internal_id:
-        return
 
     item_id = await _item_type_id(session, item)
-    if item_id is None:
-        return
+    if item_id is None: return
 
-    # one row per (user, item) — bump it if it exists, else create it
-    user_item = (await session.execute(
-        select(UserItem).where(
-            UserItem.user_id == internal_id,
-            UserItem.item_id == item_id,
-        )
-    )).scalar_one_or_none()
-
-    if user_item:
-        user_item.item_count += amount
-    else:
-        session.add(UserItem(
-            user_id=internal_id,
-            item_id=item_id,
-            item_count=amount,
-        ))
+    stmt = (
+        pg_insert(UserItems)
+        .values(user_id=internal_id, item_id=item_id, item_count=amount)
+        .on_conflict_do_update(index_elements=[UserItems.user_id, UserItems.item_id], set_={"item_count": UserItems.item_count+amount})
+        .returning(UserItems.id)
+    )
+    await session.execute(stmt)
 
 
 async def get_user_inventory(session, discord_id: int):
@@ -116,38 +106,30 @@ async def get_user_inventory(session, discord_id: int):
         return []
 
     stmt = await session.execute(
-        select(ItemTypeInfo.item_name, UserItem.item_count, ItemTypeInfo.on_author)
-        .join(UserItem, UserItem.item_id == ItemTypeInfo.id)
-        .where(UserItem.user_id == internal_id, UserItem.item_count > 0)
+        select(ItemTypeInfo.item_name, UserItems.item_count, ItemTypeInfo.on_author)
+        .join(UserItems, UserItems.item_id == ItemTypeInfo.id)
+        .where(UserItems.user_id == internal_id, UserItems.item_count > 0)
     )
     return stmt.all()
 
 
 async def consume_item(session, discord_id: int, item) -> bool:
     internal_user_id = await session.scalar(
-        select(User.id).where(User.discord_id == discord_id)
-    )
-    if not internal_user_id:
-        return False
+        select(User.id).where(User.discord_id == discord_id))
 
     item_id = await _item_type_id(session, item)
-    if item_id is None:
-        return False
+    if item_id is None: return False
 
     record = (await session.execute(
-        select(UserItem).where(
-            UserItem.user_id == internal_user_id,
-            UserItem.item_id == item_id,
-        )
-    )).scalar_one_or_none()
+        update(UserItems).where(
+            UserItems.user_id == internal_user_id,
+            UserItems.item_id == item_id)
+        .where(UserItems.item_count > 0)
+        .values(item_count=UserItems.item_count - 1)
+    ))
 
-    if not record or record.item_count <= 0:
+    if not record.rowcount:
         return False
-
-    if record.item_count > 1:
-        record.item_count -= 1
-    else:
-        await session.delete(record)
 
     return True
 
@@ -172,51 +154,42 @@ async def get_item_role(session, item_name: str) -> int | None:
     )
 
 
-async def transfer_item(session, from_discord_id: int, to_discord_id: int, item_name: str) -> bool:
-    from_internal_id = await session.scalar(
+async def transfer_item(session, from_discord_id: int, to_discord_id: int, item_name: str, amount: int = 1) -> bool:
+    from_internal_id = (await session.execute(
         select(User.id).where(User.discord_id == from_discord_id)
-    )
-    to_internal_id = await session.scalar(
+    )).scalar_one()
+    to_internal_id = (await session.execute(
         select(User.id).where(User.discord_id == to_discord_id)
-    )
-
-    if not from_internal_id or not to_internal_id:
-        return False
-
+    )).scalar_one()
     item_id = await _item_type_id(session, item_name)
     if item_id is None:
         return False
 
-    record = (await session.execute(
-        select(UserItem).where(
-            UserItem.user_id == from_internal_id,
-            UserItem.item_id == item_id,
-            UserItem.item_count > 0,
-        )
-    )).scalar_one_or_none()
+    await session.execute(select(UserItems) # blocking both ID so we can't get deadlock
+            .where(
+            UserItems.user_id.in_([from_internal_id, to_internal_id]),
+            UserItems.item_id==item_id)
+            .order_by(UserItems.id)
+            .with_for_update())
 
-    if not record:
+
+    stmt = (update(UserItems)
+        .where(
+            UserItems.user_id == from_internal_id,
+            UserItems.item_id == item_id,
+            UserItems.item_count >= amount)
+        .values(item_count=UserItems.item_count-amount))
+
+
+    if (await session.execute(stmt)).rowcount == 0:
         return False
 
-    if record.item_count > 1:
-        record.item_count -= 1
-    else:
-        await session.delete(record)
 
-    to_record = (await session.execute(
-        select(UserItem).where(
-            UserItem.user_id == to_internal_id,
-            UserItem.item_id == item_id,
-        )
-    )).scalar_one_or_none()
-
-    if to_record:
-        to_record.item_count += 1
-    else:
-        session.add(UserItem(
-            user_id=to_internal_id,
-            item_id=item_id,
-            item_count=1,
-        ))
+    stmt = (
+        pg_insert(UserItems)
+        .values(user_id=to_internal_id, item_id=item_id, item_count=amount)
+        .on_conflict_do_update(index_elements=[UserItems.user_id, UserItems.item_id], set_={"item_count": UserItems.item_count+amount})
+    )
+    await session.execute(stmt)
 
     return True

@@ -48,6 +48,8 @@ def _format_item_use_message(result, target_mention):
             return "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         case ItemUseOutcome.GRANTED:
             return f"{target_mention} got the effect of **{result.item_name}**!"
+        case ItemUseOutcome.ERROR:
+            return "Error occurred"
     return "Error occurred"
 
 
@@ -89,11 +91,16 @@ async def logic(interaction_user_id, interaction_guild_id, item_name: str, targe
             )
             if not effect_added:
                 raise _EffectAlreadyActive
+
+            logger.info(f"User {interaction_user_id} used {item_name} on {target_id}")
+            return ItemUseResult(outcome=ItemUseOutcome.GRANTED, item_name=item_name, role_id=role_id,
+                                 target_id=target_id)
+
     except _EffectAlreadyActive:
         return ItemUseResult(outcome=ItemUseOutcome.ALREADY_ACTIVE, item_name=item_name, target_id=target_id)
-
-    logger.info(f"User {interaction_user_id} used {item_name} on {target_id}")
-    return ItemUseResult(outcome=ItemUseOutcome.GRANTED, item_name=item_name, role_id=role_id, target_id=target_id)
+    except Exception as e:
+        logger.exception(f"{interaction_user_id} failed to use {item_name} on {target_id}: {e}")
+        return ItemUseResult(outcome=ItemUseOutcome.ERROR, item_name=item_name)
 
 
 async def _grant_role(guild, target_member, result):
@@ -114,23 +121,17 @@ async def _grant_role(guild, target_member, result):
 async def handle(interaction, item_name: str, target: discord.Member):
     await interaction.response.defer(thinking=True)
     logger.debug(f"Use item handle: {interaction.user.id} uses {item_name} on {target.id}")
-    try:
-        result = await logic(
-            interaction_user_id=interaction.user.id,
-            interaction_guild_id=interaction.guild_id,
-            item_name=item_name,
-            target_id=target.id,
-        )
-        if not result:
-            return await interaction.followup.send("Error occurred")
+    result = await logic(
+        interaction_user_id=interaction.user.id,
+        interaction_guild_id=interaction.guild_id,
+        item_name=item_name,
+        target_id=target.id,
+    )
 
-        # on_author redirects the effect onto the invoking user
-        target_member = interaction.user if result.target_id == interaction.user.id else target
+    # on_author redirects the effect onto the invoking user
+    target_member = interaction.user if result.target_id == interaction.user.id else target
 
-        if result.outcome is ItemUseOutcome.GRANTED:
-            return await interaction.followup.send(await _grant_role(interaction.guild, target_member, result))
+    if result.outcome is ItemUseOutcome.GRANTED:
+        return await interaction.followup.send(await _grant_role(interaction.guild, target_member, result))
 
-        await interaction.followup.send(_format_item_use_message(result, target_member.mention))
-    except Exception as e:
-        await interaction.followup.send("Error occurred")
-        logger.warning(f"Error occurred for {interaction.user}: {e}")
+    return await interaction.followup.send(_format_item_use_message(result, target_member.mention))

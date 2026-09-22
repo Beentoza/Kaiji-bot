@@ -12,6 +12,7 @@ class StatusOutcome(enum.Enum):
     KAIJI = "kaiji"
     OTHER_USER = "other_user"
     SUCCESS = "success"
+    ERROR = "error"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -27,9 +28,13 @@ async def logic(target_user_id, is_self):
     if not is_self:
         return StatusResult(outcome=StatusOutcome.OTHER_USER)
 
-    async with UnitOfWork() as uow:
-        status = await db_user.get_user_status(uow.session, target_user_id)
-    return StatusResult(outcome=StatusOutcome.SUCCESS, status_id=status)
+    try:
+        async with UnitOfWork() as uow:
+            status = await db_user.get_user_status(uow.session, target_user_id)
+        return StatusResult(outcome=StatusOutcome.SUCCESS, status_id=status)
+    except Exception as e:
+        logger.exception(f"Failed to get status for {target_user_id}: {e}")
+        return StatusResult(outcome=StatusOutcome.ERROR)
 
 
 def _format_status_message(result, display_name):
@@ -41,6 +46,8 @@ def _format_status_message(result, display_name):
         case StatusOutcome.SUCCESS:
             status_name = give_role_name(result.status_id)
             return f"user {display_name} has status **{status_name}**"
+        case StatusOutcome.ERROR:
+            return "Error occurred"
     return "Error occurred"
 
 
@@ -49,5 +56,5 @@ async def handle(interaction, member):
     logger.debug(f"Controller called for user {member.id}")
     result = await logic(target_user_id=member.id, is_self=member.id == interaction.user.id)
     message = _format_status_message(result, member.display_name)
-    await interaction.followup.send(message)
     logger.info(f"{interaction.user.id} checked status for {member.id}")
+    return await interaction.followup.send(message)

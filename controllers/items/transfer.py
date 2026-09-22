@@ -9,8 +9,8 @@ async def handle(interaction: discord.Interaction, item_name: str, target: disco
     await interaction.response.defer(thinking=True)
 
     async with UnitOfWork() as uow:
-        if not await db_user.check_user_exists(uow.session, user_id=interaction.user.id):
-            return await interaction.followup.send("I have no idea who you even are! How you could have a item? Get a cat!")
+        if not await db_user.check_user_exists(uow.session, user_id=target.id):
+            return await interaction.followup.send("I have no idea who he even is! How you could het receive a item? Get a cat!")
 
         success = await db_items.transfer_item(uow.session, interaction.user.id, target.id, item_name)
 

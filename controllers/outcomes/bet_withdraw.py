@@ -22,32 +22,30 @@ def _format_message(result, mention):
 
 
 async def logic(user_id: int, guild_id: int, outcome_name: str):
-    async with UnitOfWork() as uow:
-        # getting status, checking if user banned
-        status = await db_user.get_user_status(uow.session, user_id)
+    try:
+        async with UnitOfWork() as uow:
+            # getting status, checking if user banned
+            status = await db_user.get_user_status(uow.session, user_id)
 
-        logger.debug(f"Checking if user {user_id} banned")
+            logger.debug(f"Checking if user {user_id} banned")
 
-        if check_ban.is_banned(status):
-            logger.debug(f"User {user_id} banned")
-            return BetWithdrawResult(outcome=BetWithdrawType.BANNED)
+            if check_ban.is_banned(status):
+                logger.debug(f"User {user_id} banned")
+                return BetWithdrawResult(outcome=BetWithdrawType.BANNED)
 
-        # withdrawing bet and returning status
-        logger.debug(f"Withdrawing bet for {user_id}")
-        withdraw_status = await db_bet.withdraw_bet_for_user(uow.session, outcome_name, user_id, guild_id, get_timestamp())
-    return withdraw_status
+            # withdrawing bet and returning status
+            logger.debug(f"Withdrawing bet for {user_id}")
+            withdraw_status = await db_bet.withdraw_bet_for_user(uow.session, outcome_name, user_id, guild_id, get_timestamp())
+        return withdraw_status
+    except Exception as e:
+        logger.exception(f"Failed to withdraw bet on {outcome_name} for {user_id}: {e}")
+        return BetWithdrawResult(outcome=BetWithdrawType.ERROR)
 
 
 async def handle(interaction, outcome):
-    try:
-        logger.debug(f"Started work for user {interaction.user.id}, {outcome}")
-        await interaction.response.defer(thinking=True)
+    logger.debug(f"Started work for user {interaction.user.id}, {outcome}")
+    await interaction.response.defer(thinking=True)
 
-        result = await logic(interaction.user.id, interaction.guild_id, outcome)
-        message_for_user = _format_message(result, interaction.user.mention)
-        return await interaction.followup.send(message_for_user, ephemeral=True)
-
-
-    except Exception as e:
-        logger.warning(f"Error occurred when tried to withdraw bet for {interaction.user}: {e}")
-        return await interaction.followup.send("Error occurred", ephemeral=True)
+    result = await logic(interaction.user.id, interaction.guild_id, outcome)
+    message_for_user = _format_message(result, interaction.user.mention)
+    return await interaction.followup.send(message_for_user, ephemeral=True)
