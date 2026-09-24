@@ -170,12 +170,14 @@ async def test_settlement_scenarios(db_session, data, mock_log_bet_event, scenar
             server_id=server_id,
         )
     else:
-        result = await settle_bet(
-            outcome_name=bet_theme,
-            server_id=server_id,
-            win_option=settlement["win_choice"],
-            time_now=settlement_time,
-        )
+        async with UnitOfWork() as uow:
+            result = await settle_bet(
+                session=uow.session,
+                outcome_name=bet_theme,
+                server_id=server_id,
+                win_option=settlement["win_choice"],
+                time_now=settlement_time,
+            )
 
     # === ASSERT === all 5 return values + balances
     assert result.outcome is BetEndType(expected["status"]), (

@@ -17,17 +17,17 @@ async def handle(interaction, embed, outcome_name, choice):
         # if we didn't find ID in DB, we don't adding
         # him. Instead, just saying he can't use this command
         return await interaction.followup.send("Only authorized users can end outcomes")
-    async with UnitOfWork() as uow:
-        status_level = await db_user.get_user_status(uow.session, interaction.user.id)
-    if status_level < constants.STATUS_REQUIRED_OUTCOME_COMMANDS: # if user status under authorizerd
-        return await interaction.followup.send("Only authorized users can end outcomes")
-
     try:
-        result = await db_outcome_logic.settle_bet(
-            outcome_name=outcome_name,
-            server_id=interaction.guild_id,
-            win_option=choice,
-            time_now=time.time()) # removing bet in DB,
+        async with UnitOfWork() as uow:
+            status_level = await db_user.get_user_status(uow.session, interaction.user.id)
+            if status_level < constants.STATUS_REQUIRED_OUTCOME_COMMANDS: # if user status under authorizerd
+                return await interaction.followup.send("Only authorized users can end outcomes")
+            result = await db_outcome_logic.settle_bet(
+                session=uow.session,
+                outcome_name=outcome_name,
+                server_id=interaction.guild_id,
+                win_option=choice,
+                time_now=time.time()) # removing bet in DB,
 
 
         answers = {

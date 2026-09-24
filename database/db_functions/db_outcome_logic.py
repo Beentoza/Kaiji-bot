@@ -12,49 +12,47 @@ from sqlalchemy import select, update, delete, bindparam, func
 
 
 
-async def settle_bet(outcome_name, server_id, win_option, time_now):
+async def settle_bet(session, outcome_name, server_id, win_option, time_now):
     """Close a bet with a winning option and pay the winners out.
 
     Returns (outcome, koef, status, channel_id, message_id).
     """
-    async with SessionLocal() as session:
-        async with session.begin():
-            outcome_info = await find_outcome(session, outcome_name, server_id)
+    outcome_info = await find_outcome(session, outcome_name, server_id)
 
-            outcome_info, status = validate_outcome(outcome_info, time_now, win_option)
-            if not outcome_info:
-                return BetEndResult(outcome=status)
+    outcome_info, status = validate_outcome(outcome_info, time_now, win_option)
+    if not outcome_info:
+        return BetEndResult(outcome=status)
 
-            rows = await check_participants(session, outcome_name, outcome_info)
-            if not rows:
-                return BetEndResult(
-                    outcome=BetEndType.NO_PARTICIPANTS,
-                    channel_id=outcome_info["channel_id"],
-                    message_id=outcome_info["message_id"],
-                )
+    rows = await check_participants(session, outcome_name, outcome_info)
+    if not rows:
+        return BetEndResult(
+            outcome=BetEndType.NO_PARTICIPANTS,
+            channel_id=outcome_info["channel_id"],
+            message_id=outcome_info["message_id"],
+        )
 
-            calc = calculate_payouts(rows, outcome_info["opts"], win_option)
+    calc = calculate_payouts(rows, outcome_info["opts"], win_option)
 
-            if calc["action"] == "refund":
-                logger.info(f"No winners or loosers for outcome {outcome_name}")
-                await execute_refund_step(session, outcome_info["id"], rows, 'refunded')
-                return BetEndResult(
-                    outcome=BetEndType.NO_WINNERS_OR_LOSERS,
-                    channel_id=outcome_info["channel_id"],
-                    message_id=outcome_info["message_id"],
-                )
+    if calc["action"] == "refund":
+        logger.info(f"No winners or loosers for outcome {outcome_name}")
+        await execute_refund_step(session, outcome_info["id"], rows, 'refunded')
+        return BetEndResult(
+            outcome=BetEndType.NO_WINNERS_OR_LOSERS,
+            channel_id=outcome_info["channel_id"],
+            message_id=outcome_info["message_id"],
+        )
 
-            # calculate_payouts only ever returns "refund" or "payout"
-            logger.debug("execute payout step")
-            await execute_payout_step(session, outcome_info["id"], rows, outcome_info["win_index"])
-            logger.info(f"Successfully ended outcome {outcome_name}")
-            return BetEndResult(
-                outcome=BetEndType.SUCCESS,
-                payouts=calc["outcome"],
-                koef=calc["koef"],
-                channel_id=outcome_info["channel_id"],
-                message_id=outcome_info["message_id"],
-            )
+    # calculate_payouts only ever returns "refund" or "payout"
+    logger.debug("execute payout step")
+    await execute_payout_step(session, outcome_info["id"], rows, outcome_info["win_index"])
+    logger.info(f"Successfully ended outcome {outcome_name}")
+    return BetEndResult(
+        outcome=BetEndType.SUCCESS,
+        payouts=calc["outcome"],
+        koef=calc["koef"],
+        channel_id=outcome_info["channel_id"],
+        message_id=outcome_info["message_id"],
+    )
 
 
 async def refund_bet(outcome_name, server_id, action='cancelled'):
@@ -91,8 +89,8 @@ async def refund_bet(outcome_name, server_id, action='cancelled'):
 async def find_outcome(session, outcome_name, server_id) -> dict | None:
     """Returns outcome info"""
     stmt = select(Bet).where(Bet.theme == outcome_name)
-    if server_id:
-        stmt = stmt.where(Bet.server_id == server_id)
+    if server_id: stmt = stmt.where(Bet.server_id == server_id)
+    stmt = stmt.with_for_update()
     bet = (await session.execute(stmt)).scalar_one_or_none()
     if not bet:
         logger.info(f"Didn't found outcome {outcome_name}")
@@ -238,14 +236,23 @@ async def execute_payout_step(session, bet_id, rows, win_index):
 
 async def execute_refund_step(session, bet_id: int, rows, action: str):
     """Refunding money to users and closing outcome"""
-    for row in rows:
-        stmt = select(Balance).where(Balance.id == row['balance_id']).with_for_update()
-        res = await session.execute(stmt)
-        db_balance = res.scalar_one_or_none()
-        if not db_balance:
-            raise RuntimeError(f"Balance not found for refund: {row['balance_id']}")
-        db_balance.balance += row['bet_money_amount']
 
+    update_data = [
+        {
+            "b_id": row['balance_id'],
+            "add_money": row['bet_money_amount']
+        }
+        for row in rows
+    ]
+
+    stmt = (
+        update(Balance)
+        .where(Balance.id == bindparam("b_id"))
+        .values(balance=Balance.balance + bindparam("add_money"))
+    )
+
+    conn = await session.connection()
+    await conn.execute(stmt, update_data)
     await session.execute(
         update(BetEvents)
         .where(BetEvents.outcome_id == bet_id, BetEvents.event_type == BetEventType.placed)
