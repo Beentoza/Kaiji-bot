@@ -1,120 +1,156 @@
 import time
-from database.db_functions import db_outcome_logic
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
-import discord
-from helpers.user_functions import check_new_user
-from helpers.BetTypes import BetEndType
+from helpers.BetTypes import BetEndType, BetEndResult
+from helpers.outcome_rules import validate_outcome, calculate_payouts
+from controllers.outcomes.bet_message import fetch_bet_message, set_bet_status
 import constants
+
+
+def _format_refusal(result, mention) -> str | None:
+    """Message for a bet that was NOT ended, or None if it was."""
+    match result.outcome:
+        case BetEndType.NO_RIGHTS:
+            return "Only authorized users can end outcomes"
+        case BetEndType.BET_NOT_FOUND:
+            return f"{mention} outcome wasn't ended due to This outcome doesn't exist"
+        case BetEndType.OPEN_BET:
+            return f"{mention} outcome wasn't ended due to This outcome still open"
+        case BetEndType.NOT_OPTION:
+            return f"{mention} outcome wasn't ended due to Can't find outcome with this options"
+    return None
+
+
+def _closed_reason(result) -> str:
+    match result.outcome:
+        case BetEndType.NO_PARTICIPANTS:
+            return "No participants found"
+        case BetEndType.NO_WINNERS_OR_LOSERS:
+            return "Bet ended with no winners or no losers. Refunded."
+    return "Error"
+
+
+def _split_payouts(payouts: dict, choice) -> tuple[list, list]:
+    """(winners, losers) as lists of (discord_id, amount)."""
+    winners, losers = [], []
+    for bet_choice, users in payouts.items():
+        for user_id, amount in users.items():
+            if bet_choice == choice:
+                winners.append((user_id, int(amount)))
+            else:
+                losers.append((user_id, int(amount)))
+    return winners, losers
+
+
+async def _display_name(guild, uid) -> str:
+    member = guild.get_member(uid) or await guild.fetch_member(uid)
+    return member.display_name if member else f"User {uid}"
+
+
+async def _build_result_embeds(guild, embed, result, choice, outcome_name):
+    """Losers embed, winners embed and the ping list for a paid-out bet."""
+    winners, losers = _split_payouts(result.payouts, choice)
+    embed_red = embed(title='Losers', color=0xff0000)
+    embed_green = embed(title='Winners', color=0x00ff00)
+    pings = []
+
+    for uid, amount in losers:
+        logger.debug(f"{uid} lost {amount} in {outcome_name}")
+        pings.append(f'<@{uid}>')
+        embed_red.add_field(name=await _display_name(guild, uid), value=f'-{amount}', inline=False)
+
+    for uid, amount in winners:
+        logger.debug(f"{uid} won {amount} in {outcome_name}")
+        pings.append(f'<@{uid}>')
+        profit = int(amount * result.koef)
+        embed_green.add_field(name=await _display_name(guild, uid), value=f'{amount} + {profit}', inline=False)
+
+    return embed_red, embed_green, pings
+
+
+async def logic(user_id, outcome_name, server_id, win_option, time_now, unit_of_work) -> BetEndResult:
+    """Close a bet with a winning option and pay the winners out."""
+    async with unit_of_work as uow:
+        status_level = await uow.user.get_user_status(user_id)
+        if status_level is None or status_level < constants.STATUS_REQUIRED_OUTCOME_COMMANDS:
+            return BetEndResult(outcome=BetEndType.NO_RIGHTS)
+
+        outcome_info = await uow.settlement.find_outcome(outcome_name, server_id)
+        outcome_info, status = validate_outcome(outcome_info, time_now, win_option)
+        if not outcome_info:
+            return BetEndResult(outcome=status)
+
+        rows = await uow.settlement.get_participation_data(outcome_info["id"])
+        if not rows:
+            logger.info(f"Didn't find participants for outcome {outcome_name}, deleting it")
+            await uow.settlement.delete_outcome(outcome_info["id"])
+            await uow.commit()
+            return BetEndResult(
+                outcome=BetEndType.NO_PARTICIPANTS,
+                channel_id=outcome_info["channel_id"],
+                message_id=outcome_info["message_id"],
+            )
+
+        calc = calculate_payouts(rows, outcome_info["opts"], win_option)
+
+        if calc["action"] == "refund":
+            logger.info(f"No winners or loosers for outcome {outcome_name}")
+            await uow.settlement.execute_refund_step(outcome_info["id"], rows, 'refunded')
+            await uow.commit()
+            return BetEndResult(
+                outcome=BetEndType.NO_WINNERS_OR_LOSERS,
+                channel_id=outcome_info["channel_id"],
+                message_id=outcome_info["message_id"],
+            )
+
+        # calculate_payouts only ever returns "refund" or "payout"
+        logger.debug("execute payout step")
+        await uow.settlement.execute_payout_step(outcome_info["id"], rows, outcome_info["win_index"])
+        await uow.commit()
+
+    logger.info(f"Successfully ended outcome {outcome_name}")
+    return BetEndResult(
+        outcome=BetEndType.SUCCESS,
+        payouts=calc["outcome"],
+        koef=calc["koef"],
+        channel_id=outcome_info["channel_id"],
+        message_id=outcome_info["message_id"],
+    )
 
 
 async def handle(interaction, embed, outcome_name, choice):
     """Command to end outcomes"""
     logger.debug(f"Started work for {interaction.user.id}: {outcome_name}")
     await interaction.response.defer(thinking=True)
-
-    if not await check_new_user.is_user_registered(interaction.user.id):
-        # if we didn't find ID in DB, we don't adding
-        # him. Instead, just saying he can't use this command
-        return await interaction.followup.send("Only authorized users can end outcomes")
     try:
-        async with UnitOfWork() as uow:
-            status_level = await uow.user.get_user_status(interaction.user.id)
-            if status_level < constants.STATUS_REQUIRED_OUTCOME_COMMANDS: # if user status under authorizerd
-                return await interaction.followup.send("Only authorized users can end outcomes")
-            result = await db_outcome_logic.settle_bet(
-                session=uow.session,
-                outcome_name=outcome_name,
-                server_id=interaction.guild_id,
-                win_option=choice,
-                time_now=time.time()) # removing bet in DB,
-            await uow.commit()
+        result = await logic(user_id=interaction.user.id, outcome_name=outcome_name, server_id=interaction.guild_id,
+                             win_option=choice, time_now=time.time(), unit_of_work=UnitOfWork())
 
+        refusal = _format_refusal(result, interaction.user.mention)
+        if refusal is not None:
+            return await interaction.followup.send(refusal)
 
-        answers = {
-                    BetEndType.BET_NOT_FOUND: "This outcome doesn't exist",
-                    BetEndType.OPEN_BET: "This outcome still open",
-                    BetEndType.NOT_OPTION: "Can't find outcome with this options",
-                    BetEndType.NO_PARTICIPANTS: "No participants found",
-                    BetEndType.NO_WINNERS_OR_LOSERS: "Bet ended with no winners or no losers. Refunded.",
-                }
-        msg = answers.get(result.outcome, "Error")
-        failed_statuses = (BetEndType.BET_NOT_FOUND, BetEndType.NOT_OPTION)
-
-        if result.outcome in failed_statuses:
-            return await interaction.followup.send(f"{interaction.user.mention} outcome wasn't ended due to {msg}")
-
-
-
-
-        channel = interaction.client.get_channel(result.channel_id)
-        message = await channel.fetch_message(result.message_id)
-        if not message.embeds:
+        message = await fetch_bet_message(interaction.client, result.channel_id, result.message_id)
+        if message is None or not message.embeds:
             return await interaction.followup.send("Error. Can't find outcome message")
-        logger.debug(f"changing existent embed {outcome_name}")
-        started_embed = message.embeds[0]
-        if started_embed.color.value != constants.OUTCOME_OPEN_BET_COLOR:
-            started_embed.remove_field(len(started_embed.fields) - 1)
 
-
-
-        started_embed.color = discord.Color.dark_gray()
-        started_embed.add_field(name='Status', value=f':no_entry_sign:  Bet closed due {msg}')
-        await message.edit(embed=started_embed)
-        if result.outcome is not BetEndType.SUCCESS: # if no participants or no loosers and winers then we don't need to make a loosers and winners list
+        if result.outcome is not BetEndType.SUCCESS:  # no participants, or no winners/losers - refunded
+            await set_bet_status(message, f':no_entry_sign:  Bet closed due {_closed_reason(result)}')
             return await interaction.followup.send(f'Bet **{outcome_name}** ended!')
 
-
-        embed_red = embed(title='Losers', color=0xff0000)
-        embed_green = embed(title='Winners', color=0x00ff00)
-
-        losers_list = []
-        winners_list = []
-
-        for bet_choice, users in result.payouts.items():
-            for user_id, amount in users.items():
-                amount = int(amount)
-                if bet_choice == choice:
-                    winners_list.append((user_id, amount))
-                else:
-                    losers_list.append((user_id, amount))
-
-        pings = []
-        # build the losers embed
-        for uid, amount in losers_list:
-            logger.debug(f"{uid} lost {amount} in {outcome_name}")
-            pings.append(f'<@{uid}>')
-            member = interaction.guild.get_member(uid) or await interaction.guild.fetch_member(uid)
-            name = member.display_name if member else f"User {uid}"
-            embed_red.add_field(name=name, value=f'-{amount}', inline=False)
-
-        # build the winners embed
-        for uid, amount in winners_list:
-            logger.debug(f"{uid} won {amount} in {outcome_name}")
-            pings.append(f'<@{uid}>')
-            member = interaction.guild.get_member(uid) or await interaction.guild.fetch_member(uid)
-            name = member.display_name if member else f"User {uid}"
-            profit = int(amount * result.koef)
-            embed_green.add_field(name=name, value=f'{amount} + {profit}', inline=False)
-
-
+        embed_red, embed_green, pings = await _build_result_embeds(interaction.guild, embed, result, choice, outcome_name)
 
         logger.info(f"Bet {outcome_name} closed by {interaction.user.display_name}")
         await interaction.followup.send(f'Bet **{outcome_name}** ended! Winner: **{choice}**')
         await interaction.followup.send(embed=embed_red)
         await interaction.followup.send(embed=embed_green)
-
-        if result.channel_id is not None and result.message_id is not None:
-            started_embed.color = discord.Color.dark_gray()
-            started_embed.add_field(name='Status', value=f'⏲️ The outcome has already been played')
-            await message.edit(embed=started_embed)
+        await set_bet_status(message, '⏲️ The outcome has already been played')
 
         ping_str = ", ".join(pings)
         if len(ping_str) > 1900:
             await interaction.followup.send("Can't ping everyone to show end of bet.")
         else:
             await interaction.followup.send(ping_str)
-
 
         logger.info(f"Bet closing handle finished successfully for {interaction.user.id}: {outcome_name}")
 

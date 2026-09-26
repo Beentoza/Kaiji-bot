@@ -6,85 +6,13 @@ from database.models.BetParticipation import BetParticipation
 from database.models.OutcomeEvents import OutcomeEvents, OutcomeEventType
 from database.models.BetEvents import BetEvents, BetEventType
 from database.models.models import BetStatus
-from helpers.BetTypes import BetEndType, BetEndResult
-from helpers.outcome_rules import validate_outcome, calculate_payouts
 from helpers.logger_config import internal_logger as logger
 from sqlalchemy import select, update, delete, bindparam, func
 
 
-class OutcomeLogicRepository:
+class OutcomeSettlementRepository:
     def __init__(self, session):
         self.session = session
-        
-    async def settle_bet(self, outcome_name, server_id, win_option, time_now):
-        """Close a bet with a winning option and pay the winners out.
-
-        Returns (outcome, koef, status, channel_id, message_id).
-        """
-        outcome_info = await self.find_outcome(outcome_name, server_id)
-
-        outcome_info, status = validate_outcome(outcome_info, time_now, win_option)
-        if not outcome_info:
-            return BetEndResult(outcome=status)
-
-        rows = await self.check_participants(outcome_name, outcome_info)
-        if not rows:
-            return BetEndResult(
-                outcome=BetEndType.NO_PARTICIPANTS,
-                channel_id=outcome_info["channel_id"],
-                message_id=outcome_info["message_id"],
-            )
-
-        calc = calculate_payouts(rows, outcome_info["opts"], win_option)
-
-        if calc["action"] == "refund":
-            logger.info(f"No winners or loosers for outcome {outcome_name}")
-            await self.execute_refund_step(outcome_info["id"], rows, 'refunded')
-            return BetEndResult(
-                outcome=BetEndType.NO_WINNERS_OR_LOSERS,
-                channel_id=outcome_info["channel_id"],
-                message_id=outcome_info["message_id"],
-            )
-
-        # calculate_payouts only ever returns "refund" or "payout"
-        logger.debug("execute payout step")
-        await self.execute_payout_step(outcome_info["id"], rows, outcome_info["win_index"])
-        logger.info(f"Successfully ended outcome {outcome_name}")
-        return BetEndResult(
-            outcome=BetEndType.SUCCESS,
-            payouts=calc["outcome"],
-            koef=calc["koef"],
-            channel_id=outcome_info["channel_id"],
-            message_id=outcome_info["message_id"],
-        )
-
-
-    async def refund_bet(self, outcome_name, server_id, action='cancelled'):
-        """Give every participant their stake back and remove the bet.
-
-        action: the OutcomeEvents type written to the log -- 'cancelled' or 'refunded'.
-        Returns (outcome, koef, status, channel_id, message_id).
-        """
-        outcome_info = await self.find_outcome(outcome_name, server_id)
-        if not outcome_info:
-            return BetEndResult(outcome=BetEndType.BET_NOT_FOUND)
-
-        rows = await self.check_participants(outcome_name, outcome_info)
-        if not rows:
-            return BetEndResult(
-                outcome=BetEndType.NO_PARTICIPANTS,
-                channel_id=outcome_info["channel_id"],
-                message_id=outcome_info["message_id"],
-            )
-
-        logger.info(f"Starting to refund {outcome_name}")
-        await self.execute_refund_step(outcome_info["id"], rows, action)
-        return BetEndResult(
-            outcome=BetEndType.CANCELLED,
-            channel_id=outcome_info["channel_id"],
-            message_id=outcome_info["message_id"],
-        )
-
 
     async def find_outcome(self, outcome_name, server_id) -> dict | None:
         """Returns outcome info"""
@@ -102,16 +30,6 @@ class OutcomeLogicRepository:
             "channel_id": bet.channel_id,
             "message_id": bet.message_id,
         }
-
-
-    async def check_participants(self, outcome_name, bet_info):
-        rows = await self.get_participation_data(bet_info["id"])
-
-        if not rows:
-            logger.info(f"Didn't find participants for outcome {outcome_name}")
-            await self.delete_outcome(bet_info["id"])
-            return None
-        return rows
 
 
     async def get_participation_data(self, bet_id: int) -> list[dict]:

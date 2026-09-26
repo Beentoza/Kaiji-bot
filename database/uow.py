@@ -1,4 +1,5 @@
 from database.db_functions.db_outcome import OutcomeRepository
+from database.db_functions.db_outcome_logic import OutcomeSettlementRepository
 from database.factory import SessionLocal
 from database.db_functions.db_bet import BetRepository
 from database.db_functions.db_effects import EffectRepository
@@ -32,6 +33,7 @@ class UnitOfWork:
         self.economy = EconomyRepository(self.session)
         self.items = ItemRepository(self.session)
         self.outcomes = OutcomeRepository(self.session)
+        self.settlement = OutcomeSettlementRepository(self.session)
         return self
 
 

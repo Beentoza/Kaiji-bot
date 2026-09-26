@@ -50,6 +50,7 @@ class BetEndType(enum.Enum):
     NOT_OPTION = "not_option"
     NO_PARTICIPANTS = "no_participants"
     NO_WINNERS_OR_LOSERS = "no_winners_or_losers"
+    NO_RIGHTS = "no_rights"
 
 @dataclasses.dataclass(frozen=True)
 class BetEndResult:
