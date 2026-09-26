@@ -1,7 +1,6 @@
 import enum
 import dataclasses
 
-from database.db_functions import db_other
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 
@@ -21,10 +20,11 @@ class LeaderboardResult:
     players: tuple = ()
 
 
-async def logic():
+async def logic(unit_of_work):
     try:
-        async with UnitOfWork() as uow:
-            data = await db_other.get_leaderboard(uow.session)
+        async with unit_of_work as uow:
+            data = await uow.other.get_leaderboard()
+            await uow.commit()
         return LeaderboardResult(outcome=LeaderboardOutcome.SUCCESS, players=data)
     except Exception as e:
         logger.exception(f"Failed to get leaderboard: {e}")
@@ -48,7 +48,7 @@ async def handle(interaction, embed):
     """Giving top 5 richest players"""
     await interaction.response.defer(thinking=True)
     logger.debug("Handle started work")
-    result = await logic()
+    result = await logic(unit_of_work=UnitOfWork())
     payload = _format_leaderboard_message(result, embed)
     await interaction.followup.send(**payload)
     logger.info(f"Handler worked for {interaction.user.id}")

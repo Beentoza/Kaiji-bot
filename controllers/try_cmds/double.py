@@ -2,7 +2,7 @@ import enum
 import dataclasses
 import random
 
-from database.db_functions import db_user, db_economy, db_internal, db_logs
+from database.db_functions import db_internal, db_logs
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 from helpers.user_functions.check_ban import is_banned
@@ -87,11 +87,11 @@ def _format_double_message(result, mention):
     return f"Error occurred"
 
 
-async def logic(interaction_user_id, interaction_guild_id, amount: int):
+async def logic(interaction_user_id, interaction_guild_id, amount: int, unit_of_work):
     user_id = interaction_user_id
     try:
-        async with UnitOfWork() as uow:
-            data = await db_economy.get_balance_status_luckfactor(user_id, uow.session)
+        async with unit_of_work as uow:
+            data = await uow.economy.get_balance_status_luckfactor(user_id)
             if not data:
                 return DoubleResult(outcome=DoubleOutcome.ERROR)
             balance, status, luck_factor = data
@@ -112,14 +112,14 @@ async def logic(interaction_user_id, interaction_guild_id, amount: int):
             if delta is None:
                 return DoubleResult(outcome=DoubleOutcome.DRAW)
 
-            await db_logs.log_try_event(session=uow.session, user_id=user_id, event_type="double", amount=amount, profit=delta,
+            await uow.logs.log_try_event(user_id=user_id, event_type="double", amount=amount, profit=delta,
                                         server_id=interaction_guild_id)
-            await db_user.add_user_balance(session=uow.session, user_id=user_id, amount=delta)
-            await db_user.update_winstreak(session=uow.session, user_id=user_id, win=int(won))
+            await uow.user.add_user_balance(user_id=user_id, amount=delta)
+            await uow.user.update_winstreak(user_id=user_id, win=int(won))
             if won:
                 jackpot_cut = int(amount * 0.05)
-                await db_economy.add_to_jackpot(session=uow.session, amount=jackpot_cut)
-
+                await uow.economy.add_to_jackpot(amount=jackpot_cut)
+            await uow.commit()
         if won:
             logger.info(f"{user_id} won {delta}")
             return DoubleResult(outcome=DoubleOutcome.WON, amount=amount, delta=delta, jackpot_cut=jackpot_cut)
@@ -133,6 +133,6 @@ async def logic(interaction_user_id, interaction_guild_id, amount: int):
 async def handle(interaction, amount):
     await interaction.response.defer(thinking=True)
     logger.debug("Handler started work")
-    result = await logic(interaction_user_id=interaction.user.id, interaction_guild_id=interaction.guild_id, amount=amount)
+    result = await logic(interaction_user_id=interaction.user.id, interaction_guild_id=interaction.guild_id, amount=amount, unit_of_work=UnitOfWork())
     message = _format_double_message(result, interaction.user.mention)
     return await interaction.followup.send(message)

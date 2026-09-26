@@ -1,5 +1,5 @@
 import time
-from database.db_functions import db_user, db_outcome_logic
+from database.db_functions import db_outcome_logic
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 import discord
@@ -19,7 +19,7 @@ async def handle(interaction, embed, outcome_name, choice):
         return await interaction.followup.send("Only authorized users can end outcomes")
     try:
         async with UnitOfWork() as uow:
-            status_level = await db_user.get_user_status(uow.session, interaction.user.id)
+            status_level = await uow.user.get_user_status(interaction.user.id)
             if status_level < constants.STATUS_REQUIRED_OUTCOME_COMMANDS: # if user status under authorizerd
                 return await interaction.followup.send("Only authorized users can end outcomes")
             result = await db_outcome_logic.settle_bet(
@@ -28,6 +28,7 @@ async def handle(interaction, embed, outcome_name, choice):
                 server_id=interaction.guild_id,
                 win_option=choice,
                 time_now=time.time()) # removing bet in DB,
+            await uow.commit()
 
 
         answers = {

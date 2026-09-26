@@ -5,45 +5,50 @@ from helpers.logger_config import internal_logger as logger
 from sqlalchemy import select, insert
 import time
 
-
-async def log_try_event(session, user_id: int, event_type: str, amount: int, profit: int, server_id: int, multiplier: float = None) -> bool:
-    try:
-        internal_id = select(User.id).where(User.discord_id == user_id).scalar_subquery()
-        log = Events(
-            user_id=internal_id,
-            event_type=EventType(event_type),
-            amount=amount,
-            profit=profit,
-            server_id=server_id,
-            timestamp=int(time.time()),
-            multiplier=multiplier
-        )
-        session.add(log)
-        return True
-    except Exception as e:
-        logger.warning(e)
-        return False
+class LogRepository:
+    def __init__(self, session):
+        self.session = session
 
 
-async def add_balance_history_into_DB(session, rows: list[dict]):
-    if not rows: return
 
-    try:
-        discord_ids = [r['user_id'] for r in rows]
-        res = await session.execute(select(User.id, User.discord_id).where(User.discord_id.in_(discord_ids)))
+    async def log_try_event(self, user_id: int, event_type: str, amount: int, profit: int, server_id: int, multiplier: float = None) -> bool:
+        try:
+            internal_id = select(User.id).where(User.discord_id == user_id).scalar_subquery()
+            log = Events(
+                user_id=internal_id,
+                event_type=EventType(event_type),
+                amount=amount,
+                profit=profit,
+                server_id=server_id,
+                timestamp=int(time.time()),
+                multiplier=multiplier
+            )
+            self.session.add(log)
+            return True
+        except Exception as e:
+            logger.warning(e)
+            return False
 
-        mapping = {d_id: i_id for i_id, d_id in res.all()}
 
-        valid_rows = []
-        for r in rows:
-            if internal_id := mapping.get(r['user_id']):
-                r['user_id'] = internal_id
-                valid_rows.append(r)
+    async def add_balance_history_into_DB(self, rows: list[dict]):
+        if not rows: return
 
-        if valid_rows:
-            await session.execute(insert(BalanceHistory), valid_rows)
-            logger.info(f"Logged {len(valid_rows)} history records.")
+        try:
+            discord_ids = [r['user_id'] for r in rows]
+            res = await self.session.execute(select(User.id, User.discord_id).where(User.discord_id.in_(discord_ids)))
 
-    except Exception as e:
-        logger.error(e)
-        raise
+            mapping = {d_id: i_id for i_id, d_id in res.all()}
+
+            valid_rows = []
+            for r in rows:
+                if internal_id := mapping.get(r['user_id']):
+                    r['user_id'] = internal_id
+                    valid_rows.append(r)
+
+            if valid_rows:
+                await self.session.execute(insert(BalanceHistory), valid_rows)
+                logger.info(f"Logged {len(valid_rows)} history records.")
+
+        except Exception as e:
+            logger.error(e)
+            raise

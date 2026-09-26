@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from database.db_functions.db_outcome_logic import calculate_payouts, validate_outcome
+from helpers.outcome_rules import calculate_payouts, validate_outcome
 from helpers.BetTypes import BetEndType
 
 

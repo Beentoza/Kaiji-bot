@@ -2,7 +2,6 @@ import enum
 import dataclasses
 
 import constants
-from database.db_functions import db_user
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 from helpers.user_functions.status_names import give_role_name
@@ -21,7 +20,7 @@ class StatusResult:
     status_id: int = 0
 
 
-async def logic(target_user_id, is_self):
+async def logic(target_user_id, is_self, unit_of_work):
     if target_user_id == constants.KAIJI_ID:
         return StatusResult(outcome=StatusOutcome.KAIJI)
     # asking about someone else: we don't register them, just say they're unknown
@@ -29,8 +28,9 @@ async def logic(target_user_id, is_self):
         return StatusResult(outcome=StatusOutcome.OTHER_USER)
 
     try:
-        async with UnitOfWork() as uow:
-            status = await db_user.get_user_status(uow.session, target_user_id)
+        async with unit_of_work as uow:
+            status = await uow.user.get_user_status(target_user_id)
+            await uow.commit()
         return StatusResult(outcome=StatusOutcome.SUCCESS, status_id=status)
     except Exception as e:
         logger.exception(f"Failed to get status for {target_user_id}: {e}")
@@ -54,7 +54,7 @@ def _format_status_message(result, display_name):
 async def handle(interaction, member):
     await interaction.response.defer(thinking=True)
     logger.debug(f"Controller called for user {member.id}")
-    result = await logic(target_user_id=member.id, is_self=member.id == interaction.user.id)
+    result = await logic(target_user_id=member.id, is_self=member.id == interaction.user.id, unit_of_work=UnitOfWork())
     message = _format_status_message(result, member.display_name)
     logger.info(f"{interaction.user.id} checked status for {member.id}")
     return await interaction.followup.send(message)

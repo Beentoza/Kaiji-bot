@@ -2,7 +2,6 @@ import enum
 import dataclasses
 import datetime as dt
 
-from database.db_functions import db_user, db_economy, db_time
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 from helpers.time_handler import get_timestamp, DAY
@@ -39,11 +38,11 @@ def _format_daily_message(result, mention):
     return f"{mention} Error occurred"
 
 
-async def logic(interaction_user_id, interaction_guild_id):
+async def logic(interaction_user_id, interaction_guild_id, unit_of_work):
     user_id = interaction_user_id
 
-    async with UnitOfWork() as uow:
-        data = await db_economy.get_timestamp_balance_status(session=uow.session, user_id=user_id, timestamp_column_name='daily')
+    async with unit_of_work as uow:
+        data = await uow.economy.get_timestamp_balance_status(user_id=user_id, timestamp_column_name='daily')
         if not data:
             return DailyResult(outcome=DailyOutcome.ERROR)
         daily_timestamp, balance, status, luck_factor = data
@@ -56,8 +55,9 @@ async def logic(interaction_user_id, interaction_guild_id):
         if daily_timestamp != 0 and time_difference < DAY:
             return DailyResult(outcome=DailyOutcome.COOLDOWN, seconds_left=DAY - time_difference)
 
-        await db_user.add_user_balance(session=uow.session, user_id=user_id, amount=DAILY_ALLOWANCE)
-        await db_time.set_daily_time(session=uow.session, user_id=user_id, time=timestamp_now)
+        await uow.user.add_user_balance(user_id=user_id, amount=DAILY_ALLOWANCE)
+        await uow.timestamps.set_daily_time(user_id=user_id, time=timestamp_now)
+        await uow.commit()
 
     new_balance = balance + DAILY_ALLOWANCE
     await timed_tasks.add_balance_history(interaction_user_id, interaction_guild_id, 'check', 'daily', DAILY_ALLOWANCE, new_balance)
@@ -71,7 +71,7 @@ async def handle(interaction):
     await interaction.response.defer(thinking=True)
     logger.debug("Handler started work")
     try:
-        result = await logic(interaction_user_id=interaction.user.id, interaction_guild_id=interaction.guild.id)
+        result = await logic(interaction_user_id=interaction.user.id, interaction_guild_id=interaction.guild.id, unit_of_work=UnitOfWork())
         message = _format_daily_message(result, interaction.user.mention)
         await interaction.followup.send(message)
     except Exception as e:

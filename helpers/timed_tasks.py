@@ -7,7 +7,7 @@ import constants
 from database.models.Events import EventType
 from discord.ext import tasks
 import discord
-from database.db_functions import db_effects, db_other, db_outcome_logic, db_items, db, db_logs
+from database.db_functions import db_outcome_logic, db_logs
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 
@@ -25,7 +25,7 @@ async def add_chances_data_into_DB():
     """Function which getting chances of all players into DB"""
     logger.info("Adding chances data to DB")
     async with UnitOfWork() as uow:
-        data = await db_other.get_chances_data(uow.session) # getting info of market, lottery and double commands
+        data = await uow.other.get_chances_data() # getting info of market, lottery and double commands
         if not data:
             logger.info("No chances data to aggregate, skipping")
             return
@@ -49,7 +49,8 @@ async def add_chances_data_into_DB():
         double_info = (user_data[:, 1])[user_data[:, 0] == EventType.double]
         total_games = len(double_info)
         double_win_probability = (np.count_nonzero(double_info > 0) / total_games * 100) if total_games else 0
-        await db.add_chances_data(uow.session, double_win_probability, lottery_total_points, market_average_multiplier)
+        await uow.stats.add_chances_data(double_win_probability, lottery_total_points, market_average_multiplier)
+        await uow.commit()
 
 
 @tasks.loop(minutes=3.0)
@@ -149,7 +150,8 @@ async def auto_flush_timer():
         if balance_log_buffer:
             try:
                 async with UnitOfWork() as uow:
-                    await db_logs.add_balance_history_into_DB(uow.session, balance_log_buffer)
+                    await uow.logs.add_balance_history_into_DB(balance_log_buffer)
+                    await uow.commit()
                 balance_log_buffer.clear()
             except Exception as e:
                 logger.error(e)
@@ -169,21 +171,23 @@ async def add_balance_history(user_id: int, server_id: int, group: str, command:
     balance_log_buffer.append(new_log)
     if len(balance_log_buffer) > 50:
         async with UnitOfWork() as uow:
-            await db_logs.add_balance_history_into_DB(uow.session, balance_log_buffer)
+            await uow.logs.add_balance_history_into_DB(balance_log_buffer)
+            await uow.commit()
         balance_log_buffer.clear()
 
 
 async def adding_logs_into_DB_by_command():
     global balance_log_buffer
     async with UnitOfWork() as uow:
-        await db_logs.add_balance_history_into_DB(uow.session, balance_log_buffer)
+        await uow.logs.add_balance_history_into_DB(balance_log_buffer)
+        await uow.commit()
     balance_log_buffer.clear()
 
 @tasks.loop(minutes=1.0)
 async def check_expired_effects_task():
     try:
         async with UnitOfWork() as uow:
-            expired = await db_effects.check_effects_for_expired(uow.session)
+            expired = await uow.effects.check_effects_for_expired()
 
             if not expired:
                 return
@@ -197,7 +201,7 @@ async def check_expired_effects_task():
 
                 logger.debug(f"Effect {name} expired for user {u_id} in guild {g_id}")
 
-                role_id = await db_items.get_item_role(uow.session, name)
+                role_id = await uow.items.get_item_role(name)
 
                 if role_id is not None:
                     guild = _bot_ref.get_guild(g_id)
@@ -221,6 +225,8 @@ async def check_expired_effects_task():
 
                 elif name == "frog":
                     pass
+
+            await uow.commit()
 
     except Exception as e:
         logger.error(f"Error in check_expired_effects_task: {e}")

@@ -3,7 +3,7 @@ import dataclasses
 import math
 import random
 
-from database.db_functions import db_user, db_economy, db_logs, db_time
+from database.db_functions import db_logs
 from database.uow import UnitOfWork
 from helpers.time_handler import get_timestamp, MARKET_TIMER
 from helpers.logger_config import internal_logger as logger
@@ -116,12 +116,12 @@ def _format_market_message(result, mention):
     return None
 
 
-async def logic(interaction_user_id, interaction_guild_id, amount: int = None):
+async def logic(interaction_user_id, interaction_guild_id, amount: int, unit_of_work):
     user_id = interaction_user_id
 
-    async with UnitOfWork() as uow:
+    async with unit_of_work as uow:
 
-        data = await db_economy.get_timestamp_balance_status(session=uow.session, user_id=user_id, timestamp_column_name="market")
+        data = await uow.economy.get_timestamp_balance_status(user_id=user_id, timestamp_column_name="market")
         if data is None:
             return MarketResult(outcome=MarketOutcome.ERROR)
         else:
@@ -137,9 +137,8 @@ async def logic(interaction_user_id, interaction_guild_id, amount: int = None):
         multip = _random_multiplier(luck_factor)
         delta, end_value_dif, new_balance, jackpot_cut = _calculate_market_payouts(amount, balance, multip)
 
-        await db_time.set_market_time(session=uow.session, user_id=user_id, time=get_timestamp())
-        await db_logs.log_try_event(
-            session=uow.session,
+        await uow.timestamps.set_market_time(user_id=user_id, time=get_timestamp())
+        await uow.logs.log_try_event(
             user_id=user_id, event_type="market", amount=amount, profit=delta,
             server_id=interaction_guild_id, multiplier=multip
         )
@@ -149,9 +148,10 @@ async def logic(interaction_user_id, interaction_guild_id, amount: int = None):
             return MarketResult(outcome=MarketOutcome.SAME_BALANCE)
 
 
-        await db_user.add_user_balance(session=uow.session,user_id=user_id, amount=delta)
+        await uow.user.add_user_balance(user_id=user_id, amount=delta)
         if end_value_dif * 0.1 >= 1:
-            await db_economy.add_to_jackpot(session=uow.session, amount=jackpot_cut)
+            await uow.economy.add_to_jackpot(amount=jackpot_cut)
+        await uow.commit()
 
     await timed_tasks.add_balance_history(
         interaction_user_id, interaction_guild_id,
@@ -175,6 +175,7 @@ async def handle(interaction, amount, test_mode=False, test_data=None):
             interaction_user_id=interaction.user.id,
             interaction_guild_id=interaction.guild_id,
             amount=amount,
+            unit_of_work=UnitOfWork(),
         )
         message = _format_market_message(result, interaction.user.mention)
         await interaction.followup.send(message)

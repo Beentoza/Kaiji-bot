@@ -4,7 +4,6 @@ import random
 import asyncio
 import discord
 
-from database.db_functions import db_items
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 import constants
@@ -43,13 +42,13 @@ def _decide_row(win_emojis: dict, symbols: list) -> tuple[list, str | None]:
             return row, None
 
 
-async def logic(user_id: int) -> CasinoResult:
+async def logic(user_id: int, unit_of_work) -> CasinoResult:
     """Decide the spin outcome and, on a win, grant the item — all in one UoW.
 
     The outcome is fully determined here; the handler's animation only reveals it."""
     try:
-        async with UnitOfWork() as uow:
-            win_emojis = await db_items.get_winning_items(uow.session)  # {emoji: item_name}
+        async with unit_of_work as uow:
+            win_emojis = await uow.items.get_winning_items()  # {emoji: item_name}
             symbols = list(win_emojis)
 
             # the reels need at least three distinct symbols to spin
@@ -60,11 +59,13 @@ async def logic(user_id: int) -> CasinoResult:
             final_row, item_name = _decide_row(win_emojis, symbols)
 
             if item_name is not None:
-                await db_items.add_item_to_user(uow.session, user_id, item_name)
+                await uow.items.add_item_to_user(user_id, item_name)
                 logger.info(f"User {user_id} won casino item {item_name}")
                 outcome = CasinoOutcome.WON
             else:
                 outcome = CasinoOutcome.LOST
+
+            await uow.commit()
 
         return CasinoResult(
             outcome=outcome,
@@ -141,7 +142,7 @@ async def handle(interaction):
     await interaction.response.defer(thinking=True)
     logger.debug("Casino handler started work")
 
-    result = await logic(interaction.user.id)
+    result = await logic(interaction.user.id, unit_of_work=UnitOfWork())
     if result.outcome is CasinoOutcome.ERROR:
         return await interaction.followup.send("Error occurred")
 

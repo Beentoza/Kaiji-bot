@@ -4,15 +4,16 @@ import constants
 from helpers.logger_config import internal_logger as logger
 from helpers import work_with_parameters
 from helpers.roles_and_rights import roles_for_certain_roles
-from database.db_functions import db_items, db_outcome
 from database.uow import UnitOfWork
 
 
 async def dynamic_autocomplete_open(interaction: Interaction, current: str):
     """Autocomplete for bet place command. User will see which bet open"""
     try:
-        active_themes = await db_outcome.get_all_bet_themes(interaction.guild_id, 1)
 
+        async with UnitOfWork() as uow:
+            active_themes = await uow.outcomes.get_all_bet_themes(interaction.guild_id, 1)
+            await uow.commit()
 
         choices = [
             app_commands.Choice(name=theme, value=theme)
@@ -30,7 +31,10 @@ async def dynamic_autocomplete_open(interaction: Interaction, current: str):
 async def dynamic_autocomplete(interaction: Interaction, current: str):
     """Using it for withdraw bet or outcome cancel (shows all closed bets)  """
     try:
-        active_themes = await db_outcome.get_all_bet_themes(interaction.guild_id, 2)
+        async with UnitOfWork() as uow:
+            active_themes = await uow.outcomes.get_all_bet_themes(interaction.guild_id, 2)
+            await uow.commit()
+
 
 
         choices = [
@@ -49,8 +53,9 @@ async def dynamic_autocomplete(interaction: Interaction, current: str):
 async def dynamic_autocomplete_closed(interaction: Interaction, current: str):
     """Using it for withdraw bet or outcome cancel (shows all closed bets)  """
     try:
-        active_themes = await db_outcome.get_all_bet_themes(interaction.guild_id, 0)
-
+        async with UnitOfWork() as uow:
+            active_themes = await uow.outcomes.get_all_bet_themes(interaction.guild_id, 0)
+            await uow.commit()
 
         choices = [
             app_commands.Choice(name=theme, value=theme)
@@ -72,8 +77,10 @@ async def sub_closed_dynamic_autocomplete(interaction: Interaction, current: str
 
         if not selected_theme:
             return [app_commands.Choice(name="Choose outcome before!", value="none")]
+        async with UnitOfWork() as uow:
+            options = await uow.outcomes.get_bet_options_by_theme(selected_theme, interaction.guild_id)
+            await uow.commit()
 
-        options = await db_outcome.get_bet_options_by_theme(selected_theme, interaction.guild_id)
 
         return [
             app_commands.Choice(name=name, value=name)
@@ -93,7 +100,9 @@ async def sub_dynamic_autocomplete(interaction: Interaction, current: str):
         if not selected_theme:
             return [app_commands.Choice(name="Choose outcome before!", value="none")]
 
-        options = await db_outcome.get_bet_options_by_theme(selected_theme, interaction.guild_id)
+        async with UnitOfWork() as uow:
+            options = await uow.outcomes.get_bet_options_by_theme(selected_theme, interaction.guild_id)
+            await uow.commit()
 
         return [
             app_commands.Choice(name=name, value=name)
@@ -169,7 +178,8 @@ async def catalog_items_autocomplete(interaction: Interaction, current: str):
     """Autocomplete for admin item-edit commands. Shows every catalog item type."""
     try:
         async with UnitOfWork() as uow:
-            items = await db_items.get_catalog_items(uow.session)
+            items = await uow.items.get_catalog_items()
+            await uow.commit()
 
         choices = []
         for item in items:
@@ -189,7 +199,8 @@ async def catalog_items_autocomplete(interaction: Interaction, current: str):
 async def _inventory_choices(interaction: Interaction, current: str, on_author: bool):
     """Owned items filtered by whether they're used on self (on_author) or on others"""
     async with UnitOfWork() as uow:
-        inventory = await db_items.get_user_inventory(uow.session, interaction.user.id)
+        inventory = await uow.items.get_user_inventory(interaction.user.id)
+        await uow.commit()
 
     choices = []
     for item in inventory:

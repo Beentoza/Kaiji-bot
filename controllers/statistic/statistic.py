@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from database.db_functions import db
 from database.uow import UnitOfWork
 from discord import ui, Interaction, SelectOption
 from helpers.logger_config import internal_logger as logger
@@ -166,7 +165,8 @@ async def handle(interaction: Interaction, show: int = 0):
     try:
         lst = []
         async with UnitOfWork() as uow:
-            res = await db.log_get_event(uow.session, interaction.user.id)
+            res = await uow.stats.log_get_event(interaction.user.id)
+            await uow.commit()
         lst.append(regroup_market_info(res[0]))
         lst.append(regroup_double_info(res[1]))
         lst.append(regroup_lottery_info(res[2]))

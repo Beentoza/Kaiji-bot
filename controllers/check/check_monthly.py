@@ -3,7 +3,6 @@ import dataclasses
 import datetime as dt
 import random
 
-from database.db_functions import db_user, db_economy, db_time
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 from helpers.time_handler import get_timestamp, MONTH
@@ -42,12 +41,12 @@ def _format_monthly_message(result, mention):
     return f"{mention} Error occurred"
 
 
-async def logic(interaction_user_id, interaction_guild_id):
+async def logic(interaction_user_id, interaction_guild_id, unit_of_work):
     """User every month can use this commands to multiple his balance"""
     user_id = interaction_user_id
 
-    async with UnitOfWork() as uow:
-        data = await db_economy.get_timestamp_balance_status(session=uow.session, user_id=user_id, timestamp_column_name='monthly')
+    async with unit_of_work as uow:
+        data = await uow.economy.get_timestamp_balance_status(user_id=user_id, timestamp_column_name='monthly')
         if not data:
             return MonthlyResult(outcome=MonthlyOutcome.ERROR)
         monthly_timestamp, balance, status, luck_factor = data
@@ -61,8 +60,9 @@ async def logic(interaction_user_id, interaction_guild_id):
             return MonthlyResult(outcome=MonthlyOutcome.COOLDOWN, seconds_left=MONTH - time_difference)
 
         monthly_multiplier = random.uniform(MONTHLY_MULT_MIN, MONTHLY_MULT_MAX)
-        new_balance = await db_user.multiply_user_balance(session=uow.session, user_id=user_id, factor=monthly_multiplier)
-        await db_time.set_monthly_time(session=uow.session, user_id=user_id, time=timestamp_now)
+        new_balance = await uow.user.multiply_user_balance(user_id=user_id, factor=monthly_multiplier)
+        await uow.timestamps.set_monthly_time(user_id=user_id, time=timestamp_now)
+        await uow.commit()
 
     await timed_tasks.add_balance_history(interaction_user_id, interaction_guild_id, 'check', 'monthly', new_balance - balance, new_balance)
 
@@ -75,7 +75,7 @@ async def handle(interaction):
     await interaction.response.defer(thinking=True)
     logger.debug("Handler started work")
     try:
-        result = await logic(interaction_user_id=interaction.user.id, interaction_guild_id=interaction.guild.id)
+        result = await logic(interaction_user_id=interaction.user.id, interaction_guild_id=interaction.guild.id, unit_of_work=UnitOfWork())
         message = _format_monthly_message(result, interaction.user.mention)
         await interaction.followup.send(message)
     except Exception as e:

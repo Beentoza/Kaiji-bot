@@ -2,7 +2,6 @@ import enum
 import discord
 from discord import ui
 
-from database.db_functions import db_admin, db_items
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 
@@ -44,13 +43,15 @@ def _build_embed(pending):
 
 async def _is_admin(user_id):
     async with UnitOfWork() as uow:
-        return await db_admin.is_admin(uow.session, user_id)
+        is_admin = await uow.admin.is_admin(user_id)
+        await uow.commit()
+        return is_admin
 
 
 async def _save(user_id, pending, get_role):
     """Persist the pending settings. Returns a ChangeEffectOutcome."""
     async with UnitOfWork() as uow:
-        if not await db_admin.is_admin(uow.session, user_id):
+        if not await uow.admin.is_admin(user_id):
             return ChangeEffectOutcome.NOT_ADMIN
 
         # resolve the role only if the item has one set
@@ -63,8 +64,7 @@ async def _save(user_id, pending, get_role):
             role_id_to_store = role.id
 
         # updating item in DB
-        changed = await db_items.change_item(
-            session=uow.session,
+        changed = await uow.items.change_item(
             item_name=pending['item_name'],
             in_casino=pending['in_casino'],
             role=role_id_to_store,
@@ -74,6 +74,7 @@ async def _save(user_id, pending, get_role):
         )
         if not changed:
             return ChangeEffectOutcome.ITEM_NOT_FOUND
+        await uow.commit()
 
     return ChangeEffectOutcome.SUCCESS
 
@@ -177,7 +178,8 @@ async def handle(
             return await interaction.followup.send("You don't have permission to do this.", ephemeral=True)
 
         async with UnitOfWork() as uow:
-            settings = await db_items.get_item_settings(uow.session, item_name)
+            settings = await uow.items.get_item_settings(item_name)
+            await uow.commit()
         if settings is None:
             return await interaction.followup.send("That item wasn't found.", ephemeral=True)
 

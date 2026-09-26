@@ -1,7 +1,6 @@
 import enum
 import dataclasses
 
-from database.db_functions import db_admin
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 from helpers import timed_tasks
@@ -35,18 +34,19 @@ def _format_set_balance_message(result, setter_mention, target_id):
     return "Error occurred. Never use this bot again."
 
 
-async def logic(setter_user_id, target_user_id, amount: int, add: bool):
-    async with UnitOfWork() as uow:
-        if not await db_admin.is_admin(uow.session, setter_user_id):
+async def logic(setter_user_id, target_user_id, amount: int, add: bool, unit_of_work):
+    async with unit_of_work as uow:
+        if not await uow.admin.is_admin(setter_user_id):
             return SetBalanceResult(outcome=SetBalanceOutcome.NOT_ADMIN)
 
         if add:
-            new_balance = await db_admin.add_target_balance(uow.session, target_user_id, amount)
+            new_balance = await uow.admin.add_target_balance(target_user_id, amount)
         else:
-            new_balance = await db_admin.set_target_balance(uow.session, target_user_id, amount)
+            new_balance = await uow.admin.set_target_balance(target_user_id, amount)
 
         if new_balance is None:
             return SetBalanceResult(outcome=SetBalanceOutcome.USER_NOT_FOUND)
+        await uow.commit()
 
     outcome = SetBalanceOutcome.ADDED if add else SetBalanceOutcome.SET
     return SetBalanceResult(outcome=outcome, amount=amount, new_balance=new_balance)
@@ -57,7 +57,7 @@ async def handle(ctx, user_id: int, set_balance: int, flag):
     logger.debug("Started work")
     try:
         add = bool(flag)
-        result = await logic(setter_user_id=ctx.author.id, target_user_id=user_id, amount=set_balance, add=add)
+        result = await logic(setter_user_id=ctx.author.id, target_user_id=user_id, amount=set_balance, add=add, unit_of_work=UnitOfWork())
 
         if result.outcome in (SetBalanceOutcome.ADDED, SetBalanceOutcome.SET):
             command = 'add_balance' if add else 'set_balance'

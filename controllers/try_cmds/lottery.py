@@ -2,7 +2,7 @@ import enum
 import dataclasses
 import random
 
-from database.db_functions import db_economy, db_logs
+from database.db_functions import db_logs
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 from helpers.time_handler import get_timestamp
@@ -100,11 +100,11 @@ def _format_lottery_message(result, mention):
     return f"{mention} Error"
 
 
-async def logic(interaction_user_id, interaction_guild_id):
+async def logic(interaction_user_id, interaction_guild_id, unit_of_work):
     user_id = interaction_user_id
 
-    async with UnitOfWork() as uow:
-        data = await db_economy.get_lottery_info(session=uow.session, user_id=user_id)
+    async with unit_of_work as uow:
+        data = await uow.economy.get_lottery_info(user_id=user_id)
 
         lottery_timestamp, balance, status, jackpot_amount, luck_factor = data
         time_since_last = get_timestamp() - lottery_timestamp
@@ -118,16 +118,16 @@ async def logic(interaction_user_id, interaction_guild_id):
 
         lottery_place, profit, jackpot_change, timer = _calculate_lottery(luck_factor, jackpot_amount)
 
-        await db_logs.log_try_event(
-            session=uow.session,
+        await uow.logs.log_try_event(
             user_id=user_id, event_type='lottery',
             amount=constants.LOTTERY_TICKET_PRICE, profit=profit,
             server_id=interaction_guild_id
         )
-        await db_economy.update_lottery_and_user(
-            session=uow.session, user_id=user_id,
+        await uow.economy.update_lottery_and_user(
+            user_id=user_id,
             user_money_change=profit, jackpot_change=jackpot_change, timer=timer
         )
+        await uow.commit()
 
     await timed_tasks.add_balance_history(
         interaction_user_id, interaction_guild_id,
@@ -149,6 +149,7 @@ async def handle(interaction):
         result = await logic(
             interaction_user_id=interaction.user.id,
             interaction_guild_id=interaction.guild_id,
+            unit_of_work=UnitOfWork(),
         )
         message = _format_lottery_message(result, interaction.user.mention)
         await interaction.followup.send(message)

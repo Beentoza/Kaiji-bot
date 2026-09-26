@@ -3,7 +3,6 @@ import dataclasses
 import datetime as dt
 import random
 
-from database.db_functions import db_user, db_economy, db_time
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 from helpers.time_handler import get_timestamp, WEEK
@@ -43,11 +42,11 @@ def _format_weekly_message(result, mention):
     return f"{mention} Error occurred"
 
 
-async def logic(interaction_user_id, interaction_guild_id):
+async def logic(interaction_user_id, interaction_guild_id, unit_of_work):
     user_id = interaction_user_id
 
-    async with UnitOfWork() as uow:
-        data = await db_economy.get_timestamp_balance_status(session=uow.session, user_id=user_id, timestamp_column_name='weekly')
+    async with unit_of_work as uow:
+        data = await uow.economy.get_timestamp_balance_status(user_id=user_id, timestamp_column_name='weekly')
         weekly_timestamp, balance, status, luck_factor = data
 
         if is_banned(status):
@@ -64,8 +63,9 @@ async def logic(interaction_user_id, interaction_guild_id):
             weekly_amount = -balance
             logger.debug(f"Adjusting loss for user {user_id}")
 
-        await db_user.add_user_balance(session=uow.session, user_id=user_id, amount=weekly_amount)
-        await db_time.set_weekly_time(session=uow.session, user_id=user_id, time=timestamp_now)
+        await uow.user.add_user_balance(user_id=user_id, amount=weekly_amount)
+        await uow.timestamps.set_weekly_time(user_id=user_id, time=timestamp_now)
+        await uow.commit()
 
     new_balance = balance + weekly_amount
     await timed_tasks.add_balance_history(interaction_user_id, interaction_guild_id, 'check', 'weekly', weekly_amount, new_balance)
@@ -83,7 +83,7 @@ async def handle(interaction):
     await interaction.response.defer(thinking=True)
     logger.debug("Handler started work")
     try:
-        result = await logic(interaction_user_id=interaction.user.id, interaction_guild_id=interaction.guild.id)
+        result = await logic(interaction_user_id=interaction.user.id, interaction_guild_id=interaction.guild.id, unit_of_work=UnitOfWork())
         message = _format_weekly_message(result, interaction.user.mention)
         await interaction.followup.send(message)
     except Exception as e:

@@ -1,5 +1,5 @@
 from helpers.logger_config import internal_logger as logger
-from database.db_functions import db_user, db_bet
+from database.db_functions import db_bet
 from database.uow import UnitOfWork
 from helpers.user_functions.check_ban import is_banned
 from helpers.BetTypes import BetPlaceType, BetPlaceResult
@@ -31,11 +31,11 @@ def _format_bet_message(result, mention):
     return f"Error occurred, how did you even make it..."
 
 
-async def logic(user_id: int, guild_id :int, amount: int, bet: str, choice: str) -> BetPlaceResult:
+async def logic(user_id: int, guild_id :int, amount: int, bet: str, choice: str, unit_of_work) -> BetPlaceResult:
     try:
-        async with UnitOfWork() as uow:
+        async with unit_of_work as uow:
             # getting data, checking if it's valid
-            data = await db_user.get_user_status_balance(session=uow.session, user_id=user_id)
+            data = await uow.user.get_user_status_balance(user_id=user_id)
             logger.debug("Data received", data)
             if not data:
                 return BetPlaceResult(outcome=BetPlaceType.ERROR)
@@ -57,8 +57,9 @@ async def logic(user_id: int, guild_id :int, amount: int, bet: str, choice: str)
                 return BetPlaceResult(outcome=BetPlaceType.TOO_HIGH)
 
             # placing bet in DB and getting result
-            result =  await db_bet.process_place_bet(uow.session, user_id, bet, choice, amount, guild_id)
+            result =  await uow.bets.process_place_bet(user_id, bet, choice, amount, guild_id)
             logger.debug(f"Result received from DB_place_bet", result)
+            await uow.commit()
             return result
     except Exception as e:
         logger.exception(f"Failed to place bet for {user_id} on {bet}, {choice}: {amount}: {e}")
@@ -69,7 +70,7 @@ async def handle(interaction, bet: str, choice: str, amount: int):
     await interaction.response.defer(thinking=True)
     logger.debug(f"Started work for user {interaction.user.id}, {bet}, {choice}, {amount}")
 
-    result = await logic(interaction.user.id, interaction.guild_id, amount, bet, choice)
+    result = await logic(interaction.user.id, interaction.guild_id, amount, bet, choice, unit_of_work=UnitOfWork())
 
     message_for_user = _format_bet_message(result, interaction.user.mention)
     logger.info(f"User {interaction.user.id} placed bet on {bet}, {choice}: {amount}")
