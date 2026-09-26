@@ -7,7 +7,6 @@ import constants
 from database.models.Events import EventType
 from discord.ext import tasks
 import discord
-from database.db_functions import db_outcome_logic, db_logs
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 
@@ -55,7 +54,13 @@ async def add_chances_data_into_DB():
 
 @tasks.loop(minutes=3.0)
 async def check_open_bets_status():
-    bets = await db_outcome_logic.check_open_bets(datetime.now().timestamp())
+    try:
+        async with UnitOfWork() as uow:
+            bets = await uow.settlement.check_open_bets(datetime.now().timestamp())
+            await uow.commit()
+    except Exception as e:
+        logger.error(f"Error while tried to change open status bets: {e}")
+        return
 
     if bets is None:
         logger.debug("There's no bets which should be closed")
@@ -87,7 +92,13 @@ async def check_open_bets_status():
 
 @tasks.loop(minutes=3.0)
 async def check_bets_liquidity_task():
-    result = await db_outcome_logic.process_in_progress_bets()
+    try:
+        async with UnitOfWork() as uow:
+            result = await uow.settlement.process_in_progress_bets()
+            await uow.commit()
+    except Exception as e:
+        logger.error(f"Error in process_in_progress_bets: {e}")
+        return
     if not result["refunded"] and not result["active"]:
         logger.debug("There's no bets, which should expire")
         return

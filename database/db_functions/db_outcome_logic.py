@@ -1,4 +1,3 @@
-from database.factory import SessionLocal
 from database.models.Users import User
 from database.models.Balances import Balance
 from database.models.Bets import Bet
@@ -146,43 +145,37 @@ class OutcomeSettlementRepository:
 
     async def check_open_bets(self, time_now) -> list | None:
         logger.debug('Check in DB for open bets')
-        try:
-            async with SessionLocal() as session:
-                async with session.begin():
-                    current_ts = int(time_now)
+        current_ts = int(time_now)
 
-                    stmt = (
-                        select(Bet)
-                        .where(Bet.status == BetStatus.ACTIVE.value)
-                        .where(Bet.end_timestamp <= current_ts)
-                    )
+        stmt = (
+            select(Bet)
+            .where(Bet.status == BetStatus.ACTIVE.value)
+            .where(Bet.end_timestamp <= current_ts)
+        )
 
-                    result = await self.session.execute(stmt)
-                    expired_bets = result.scalars().all()
+        result = await self.session.execute(stmt)
+        expired_bets = result.scalars().all()
 
-                    if not expired_bets:
-                        logger.debug('No open bets found which should be closed')
-                        return None
-
-                    for bet in expired_bets:
-                        bet.status = BetStatus.IN_PROGRESS.value
-
-                    logger.debug(f"Changing status for {len(expired_bets)} bets...")
-
-                    data_to_return = [
-                        {
-                            "id": b.id,
-                            "theme": b.theme,
-                            "server_id": b.server_id,
-                            "channel_id": b.channel_id,
-                            "message_id": b.message_id
-                        } for b in expired_bets
-                    ]
-                    return data_to_return
-
-        except Exception as e:
-            logger.error(f"Error while tried to change open status bets: {e}")
+        if not expired_bets:
+            logger.debug('No open bets found which should be closed')
             return None
+
+        for bet in expired_bets:
+            bet.status = BetStatus.IN_PROGRESS.value
+
+        logger.debug(f"Changing status for {len(expired_bets)} bets...")
+
+        data_to_return = [
+            {
+                "id": b.id,
+                "theme": b.theme,
+                "server_id": b.server_id,
+                "channel_id": b.channel_id,
+                "message_id": b.message_id
+            } for b in expired_bets
+        ]
+        return data_to_return
+
 
 
     async def checking_couple_bets_if_they_are_vallide(self, bet_ids: list[int]) -> dict:
@@ -217,62 +210,52 @@ class OutcomeSettlementRepository:
 
     async def process_in_progress_bets(self) -> dict:
         logger.debug('Checking if some bets should expire')
-        try:
-            async with SessionLocal() as session:
-                async with session.begin():
-                    stmt = select(Bet).where(Bet.status == BetStatus.IN_PROGRESS.value)
-                    res = await self.session.execute(stmt)
-                    bets = res.scalars().all()
+        stmt = select(Bet).where(Bet.status == BetStatus.IN_PROGRESS.value)
+        res = await self.session.execute(stmt)
+        bets = res.scalars().all()
 
-                    if not bets:
-                        logger.debug("Didn't found bets which should expire")
-                        return {"refunded": [], "active": []}
-
-                    bet_ids = [b.id for b in bets]
-                    validity_map = await self.checking_couple_bets_if_they_are_vallide(bet_ids)
-
-                    valid_ids = []
-                    invalid_ids = []
-                    refund_info = []
-
-                    for bet in bets:
-                        if validity_map.get(bet.id):
-                            valid_ids.append(bet.id)
-                        else:
-                            invalid_ids.append(bet.id)
-                            refund_info.append({"channel_id": bet.channel_id, "message_id": bet.message_id, "theme": bet.theme})
-
-                    logger.debug(f"Found {len(invalid_ids)} bets, which should expire")
-
-                    # refund_bet opens its own session, and we are already inside one --
-                    # so call the session-taking steps it is built from. We already hold the
-                    # Bet row, so there is nothing to look up by theme again.
-                    invalid_set = set(invalid_ids)
-                    for bet in bets:
-                        if bet.id not in invalid_set:
-                            continue
-                        rows = await self.get_participation_data(bet.id)
-                        if rows:
-                            await self.execute_refund_step(bet.id, rows, 'cancelled')
-                        else:
-                            await self.delete_outcome(bet.id)
-
-                    active_bets_objects = []
-                    if valid_ids:
-                        await self.session.execute(
-                            update(Bet)
-                            .where(Bet.id.in_(valid_ids))
-                            .values(status=BetStatus.CLOSED.value)
-                        )
-                        res_active = await self.session.execute(select(Bet).where(Bet.id.in_(valid_ids)))
-                        active_bets_objects = res_active.scalars().all()
-
-                    logger.debug('Found a bets which should expire, returning')
-                    return {
-                        "refunded": refund_info,
-                        "active": list(active_bets_objects)
-                    }
-
-        except Exception as e:
-            logger.error(f"Error in process_in_progress_bets: {e}")
+        if not bets:
+            logger.debug("Didn't found bets which should expire")
             return {"refunded": [], "active": []}
+
+        bet_ids = [b.id for b in bets]
+        validity_map = await self.checking_couple_bets_if_they_are_vallide(bet_ids)
+
+        valid_ids = []
+        invalid_ids = []
+        refund_info = []
+
+        for bet in bets:
+            if validity_map.get(bet.id):
+                valid_ids.append(bet.id)
+            else:
+                invalid_ids.append(bet.id)
+                refund_info.append({"channel_id": bet.channel_id, "message_id": bet.message_id, "theme": bet.theme})
+
+        logger.debug(f"Found {len(invalid_ids)} bets, which should expire")
+
+        invalid_set = set(invalid_ids)
+        for bet in bets:
+            if bet.id not in invalid_set:
+                continue
+            rows = await self.get_participation_data(bet.id)
+            if rows:
+                await self.execute_refund_step(bet.id, rows, 'cancelled')
+            else:
+                await self.delete_outcome(bet.id)
+
+        active_bets_objects = []
+        if valid_ids:
+            await self.session.execute(
+                update(Bet)
+                .where(Bet.id.in_(valid_ids))
+                .values(status=BetStatus.CLOSED.value)
+            )
+            res_active = await self.session.execute(select(Bet).where(Bet.id.in_(valid_ids)))
+            active_bets_objects = res_active.scalars().all()
+
+        logger.debug('Found a bets which should expire, returning')
+        return {
+            "refunded": refund_info,
+            "active": list(active_bets_objects)
+        }
