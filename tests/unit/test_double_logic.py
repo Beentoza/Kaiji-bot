@@ -23,32 +23,6 @@ def try_data():
         return json.load(f)
 
 
-@pytest.fixture
-def mocks(monkeypatch):
-    m = {
-        "get_balance_status_luckfactor": AsyncMock(),
-        "add_user_balance": AsyncMock(),
-        "update_winstreak": AsyncMock(),
-        "add_to_jackpot": AsyncMock(),
-        "log_try_event": AsyncMock(),
-    }
-    monkeypatch.setattr("controllers.try_cmds.double.UnitOfWork", MagicMock())
-    monkeypatch.setattr(
-        "controllers.try_cmds.double.db_economy.get_balance_status_luckfactor",
-        m["get_balance_status_luckfactor"])
-    monkeypatch.setattr(
-        "controllers.try_cmds.double.db_user.add_user_balance",
-        m["add_user_balance"])
-    monkeypatch.setattr(
-        "controllers.try_cmds.double.db_user.update_winstreak",
-        m["update_winstreak"])
-    monkeypatch.setattr(
-        "controllers.try_cmds.double.db_economy.add_to_jackpot",
-        m["add_to_jackpot"])
-    monkeypatch.setattr(
-        "controllers.try_cmds.double.db_logs.log_try_event",
-        m["log_try_event"])
-    return m
 
 
 def _patch_roll(monkeypatch, outcome: str, luck_factor: float) -> None:
@@ -66,13 +40,13 @@ def _patch_roll(monkeypatch, outcome: str, luck_factor: float) -> None:
 
 
 @pytest.mark.parametrize("scenario_name", SCENARIOS)
-async def test_double_logic(try_data, mocks, monkeypatch, scenario_name):
+async def test_double_logic(try_data, monkeypatch, scenario_name, fake_uow):
     scenario = SCENARIOS[scenario_name]
     setup = scenario["setup"]
     expected = scenario["expected"]
     discord_id = try_data["user"]["discord_id"]
 
-    mocks["get_balance_status_luckfactor"].return_value = (
+    fake_uow.economy.get_balance_status_luckfactor.return_value = (
         setup["balance"], setup["status"], setup["luck_factor"],
     )
 
@@ -83,6 +57,7 @@ async def test_double_logic(try_data, mocks, monkeypatch, scenario_name):
         interaction_user_id=discord_id,
         interaction_guild_id=999,
         amount=scenario["amount"],
+        unit_of_work=fake_uow
     )
 
 
@@ -96,12 +71,12 @@ async def test_double_logic(try_data, mocks, monkeypatch, scenario_name):
     delta = expected["balance"] - setup["balance"]
     if delta == 0:
         # ban / validation / draw -> balance doesn't move
-        mocks["add_user_balance"].assert_not_called()
+        fake_uow.user.add_user_balance.assert_not_called()
     else:
-        mocks["add_user_balance"].assert_awaited_once()
-        assert mocks["add_user_balance"].await_args.kwargs["amount"] == delta, (
+        fake_uow.economy.get_balance_status_luckfactor.assert_awaited_once()
+        assert fake_uow.user.add_user_balance.await_args.kwargs["amount"] == delta, (
             f"[{scenario_name}] delta: expected {delta}, "
-            f"got {mocks['add_user_balance'].await_args.kwargs.get('amount')!r}"
+            f"got {fake_uow.user.add_user_balance.await_args.kwargs.get('amount')!r}"
         )
         assert result.delta == delta
 
