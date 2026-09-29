@@ -2,10 +2,11 @@ import os
 import sys
 import hashlib
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 from dotenv import load_dotenv
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, select, text
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.schema import CreateTable
@@ -17,6 +18,11 @@ from database.factory import Base
 
 from database.models import Users, Balances, Bets, BetParticipation  # noqa: F401
 from database.models import OutcomeEvents, BetEvents, ChancesData    # noqa: F401
+from database.models.Users import User
+from database.models.Balances import Balance
+from database.models.Statuses import Status
+from database.models.UserData import UserData
+from database.models.Timestamps import Timestamp
 from database.uow import UnitOfWork
 
 env_path = Path(__file__).resolve().parent.parent / ".env"
@@ -138,3 +144,55 @@ async def db_session(TestSessionLocal):
         yield session
 
 
+
+
+# ---------- shared helpers ----------
+
+# frozen "now" for commands that check cooldowns; seed timestamps as NOW - time_since_last
+NOW = 10_000_000
+
+
+@pytest.fixture
+def now():
+    return NOW
+
+
+@pytest.fixture
+def seed_user(db_session):
+    # factory: the same rows as db_user.add_new_user, only flushed (the test's savepoint rolls them back)
+    async def _seed(discord_id, balance=100, status=0, luck_factor=0, **timestamps):
+        new_user = User(discord_id=discord_id)
+        db_session.add(new_user)
+        await db_session.flush()  # populate new_user.id
+
+        db_session.add_all([
+            Balance(id=new_user.id, balance=balance),
+            Status(id=new_user.id, status=int(status)),
+            UserData(id=new_user.id, double_curr_row=0, double_max_row=0, luck_factor=luck_factor),
+            Timestamp(id=new_user.id, **timestamps),  # e.g. lottery=..., market=...
+        ])
+        await db_session.flush()
+        return new_user.id
+    return _seed
+
+
+@pytest.fixture
+def get_balance(db_session):
+    async def _get(discord_id: int) -> int:
+        stmt = (
+            select(Balance.balance)
+            .join(User, User.id == Balance.id)
+            .where(User.discord_id == discord_id)
+        )
+        res = await db_session.execute(stmt)
+        return res.scalar_one()
+    return _get
+
+
+@pytest.fixture
+def mock_externals(monkeypatch, now):
+    # get_timestamp is imported by name into each command module -> patch it per module.
+    # timed_tasks is imported as a module, so one patch covers every caller.
+    for module in ("controllers.try_cmds.lottery", "controllers.try_cmds.market"):
+        monkeypatch.setattr(f"{module}.get_timestamp", lambda: now)
+    monkeypatch.setattr("helpers.timed_tasks.add_balance_history", AsyncMock())

@@ -3,12 +3,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
-from sqlalchemy import select
 from controllers.try_cmds.double import random
-from database.models.Users import User
-from database.models.Balances import Balance
-from database.models.Statuses import Status
-from database.models.UserData import UserData
 from database.db_functions.db_user import UserRepository
 from controllers.try_cmds import double
 from controllers.try_cmds.double import (
@@ -36,29 +31,6 @@ def try_data():
 
 # ---------- helpers ----------
 
-async def _seed_user(session, discord_id: int, balance: int, status: int, luck_factor: float):
-    new_user = User(discord_id=discord_id)
-    session.add(new_user)
-    await session.flush()
-
-    session.add_all([
-        Balance(id=new_user.id, balance=balance),
-        Status(id=new_user.id, status=int(status)),
-        UserData(id=new_user.id, double_curr_row=0, double_max_row=0, luck_factor=luck_factor),
-    ])
-    await session.flush()
-
-
-async def _get_balance(db_session, discord_id: int) -> int:
-    stmt = (
-        select(Balance.balance)
-        .join(User, User.id == Balance.id)
-        .where(User.discord_id == discord_id)
-    )
-    res = await db_session.execute(stmt)
-    return res.scalar_one()
-
-
 def _patch_roll(monkeypatch, outcome: str, luck_factor: float) -> None:
     """Arranges the roll that produces the scenario's outcome under the CURRENT constants.
 
@@ -75,15 +47,15 @@ def _patch_roll(monkeypatch, outcome: str, luck_factor: float) -> None:
 # ---------- tests ----------
 
 @pytest.mark.parametrize("scenario_name", logic_SCENARIOS)
-async def test_double_scenarios(db_session, try_data, monkeypatch, scenario_name, uow):
+async def test_double_scenarios(db_session, seed_user, get_balance, try_data, monkeypatch, scenario_name, uow):
     scenario = try_data["double"][scenario_name]
     setup = scenario["setup"]
     expected = scenario["expected"]
     discord_id = try_data["user"]["discord_id"]
 
     # === ARRANGE ===
-    await _seed_user(
-        db_session, discord_id,
+    await seed_user(
+        discord_id,
         balance=setup["balance"], status=setup["status"], luck_factor=setup["luck_factor"],
     )
 
@@ -107,7 +79,7 @@ async def test_double_scenarios(db_session, try_data, monkeypatch, scenario_name
 
     # balance in the DB after the real UnitOfWork transaction
     db_session.expire_all()
-    actual_balance = await _get_balance(db_session, discord_id)
+    actual_balance = await get_balance(discord_id)
     assert actual_balance == expected["balance"], (
         f"[{scenario_name}] balance: expected {expected['balance']}, got {actual_balance}"
     )
@@ -115,14 +87,14 @@ async def boom(*args, **kwargs):
     raise RuntimeError("boom")
 
 @pytest.mark.parametrize("scenario_name", rollback_SCENARIOS)
-async def test_double_rollback_scenarios(db_session, try_data, monkeypatch, scenario_name, uow):
+async def test_double_rollback_scenarios(db_session, seed_user, get_balance, try_data, monkeypatch, scenario_name, uow):
     scenario = try_data["rollback"][scenario_name]
     setup = scenario["setup"]
     expected = scenario["expected"]
     discord_id = try_data["user"]["discord_id"]
 
-    await _seed_user(
-        db_session, discord_id,
+    await seed_user(
+        discord_id,
         balance=setup["balance"], status=setup["status"], luck_factor=setup["luck_factor"],
     )
 
@@ -144,7 +116,7 @@ async def test_double_rollback_scenarios(db_session, try_data, monkeypatch, scen
 
 
     db_session.expire_all()
-    actual_balance = await _get_balance(db_session, discord_id)
+    actual_balance = await get_balance(discord_id)
     assert actual_balance == expected["balance"], (
         f"[{scenario_name}] balance: expected {expected['balance']}, got {actual_balance}"
     )

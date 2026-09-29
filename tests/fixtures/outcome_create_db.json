@@ -1,0 +1,35 @@
+{
+  "user": {"discord_id": 2001},
+
+  "_baseline_comment": "seeded before every scenario; each row exists for a near-miss: match/2 = same theme other server, derby/1 = same server other theme",
+  "baseline": [
+    {"theme": "match", "server_id": 1},
+    {"theme": "match", "server_id": 2},
+    {"theme": "derby", "server_id": 1}
+  ],
+
+  "outcomes": {
+    "no_rights":                 {"status": 1, "new": {"theme": "cup",   "server_id": 1, "choices": "a;b",   "timer": 5,  "meas": "minute"}, "after": [], "expected": {"check": "no_rights",       "create": null}},
+    "no_rights_beats_duplicate": {"status": 1, "new": {"theme": "match", "server_id": 1, "choices": "a;b",   "timer": 5,  "meas": "minute"}, "after": [], "expected": {"check": "no_rights",       "create": null}},
+    "status_on_threshold":       {"status": 2, "new": {"theme": "cup",   "server_id": 1, "choices": "a;b",   "timer": 5,  "meas": "minute"}, "after": [], "expected": {"check": "valid",           "create": "created"}},
+
+    "one_option":                {"status": 2, "new": {"theme": "cup",   "server_id": 1, "choices": "a",     "timer": 5,  "meas": "minute"}, "after": [], "expected": {"check": "too_few_options", "create": null}},
+    "empty_options_ignored":     {"status": 2, "new": {"theme": "cup",   "server_id": 1, "choices": "a; ;",  "timer": 5,  "meas": "minute"}, "after": [], "expected": {"check": "too_few_options", "create": null}},
+
+    "timer_below_min":           {"status": 2, "new": {"theme": "cup",   "server_id": 1, "choices": "a;b",   "timer": 2,  "meas": "minute"}, "after": [], "expected": {"check": "bad_timer",       "create": null}},
+    "timer_min":                 {"status": 2, "new": {"theme": "cup",   "server_id": 1, "choices": "a;b",   "timer": 3,  "meas": "minute"}, "after": [], "expected": {"check": "valid",           "create": "created"}},
+    "timer_max":                 {"status": 2, "new": {"theme": "cup",   "server_id": 1, "choices": "a;b",   "timer": 24, "meas": "hour"},   "after": [], "expected": {"check": "valid",           "create": "created"}},
+    "timer_above_max":           {"status": 2, "new": {"theme": "cup",   "server_id": 1, "choices": "a;b",   "timer": 25, "meas": "hour"},   "after": [], "expected": {"check": "bad_timer",       "create": null}},
+
+    "duplicate":                 {"status": 2, "new": {"theme": "match", "server_id": 1, "choices": "a;b",   "timer": 5,  "meas": "minute"}, "after": [], "expected": {"check": "already_exists",  "create": null}},
+    "same_theme_other_server":   {"status": 2, "new": {"theme": "match", "server_id": 3, "choices": "a;b",   "timer": 5,  "meas": "minute"}, "after": [], "expected": {"check": "valid",           "create": "created"}},
+    "other_theme_same_server":   {"status": 2, "new": {"theme": "final", "server_id": 1, "choices": "a;b",   "timer": 5,  "meas": "minute"}, "after": [], "expected": {"check": "valid",           "create": "created"}},
+
+    "created_during_preview":    {"status": 2, "new": {"theme": "final", "server_id": 1, "choices": "a;b",   "timer": 5,  "meas": "minute"},
+                                  "after": [{"theme": "final", "server_id": 1}],
+                                  "expected": {"check": "valid", "create": "already_exists"}},
+    "near_miss_during_preview":  {"status": 2, "new": {"theme": "final", "server_id": 1, "choices": "a;b",   "timer": 5,  "meas": "minute"},
+                                  "after": [{"theme": "final", "server_id": 2}, {"theme": "cup", "server_id": 1}],
+                                  "expected": {"check": "valid", "create": "created"}}
+  }
+}

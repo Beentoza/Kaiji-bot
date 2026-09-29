@@ -1,15 +1,7 @@
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock
 
 import pytest
-from sqlalchemy import select
-
-from database.models.Users import User
-from database.models.Balances import Balance
-from database.models.Statuses import Status
-from database.models.UserData import UserData
-from database.models.Timestamps import Timestamp
 from database.models.Jackpot import Jackpot
 
 from controllers.try_cmds.lottery import (
@@ -24,8 +16,6 @@ pytestmark = pytest.mark.integration
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
-NOW = 10_000_000
-
 
 # ---------- fixtures ----------
 
@@ -33,41 +23,6 @@ NOW = 10_000_000
 def try_data():
     with open(FIXTURES_DIR / "lottery_db.json", encoding="utf-8") as f:
         return json.load(f)
-
-
-@pytest.fixture
-def mock_externals(monkeypatch):
-    # log_try_event writes Events, add_balance_history writes a shared buffer: stub both
-    monkeypatch.setattr("controllers.try_cmds.lottery.get_timestamp", lambda: NOW)
-    monkeypatch.setattr("controllers.try_cmds.lottery.timed_tasks.add_balance_history", AsyncMock())
-
-
-# ---------- helpers ----------
-
-async def _seed_user(session, discord_id, balance, status, luck_factor, lottery_timestamp, jackpot):
-    new_user = User(discord_id=discord_id)
-    session.add(new_user)
-    await session.flush()
-
-    # one Jackpot row: get_lottery_info reads it via subquery, update_lottery_and_user writes it
-    session.add_all([
-        Balance(id=new_user.id, balance=balance),
-        Status(id=new_user.id, status=int(status)),
-        UserData(id=new_user.id, double_curr_row=0, double_max_row=0, luck_factor=luck_factor),
-        Timestamp(id=new_user.id, lottery=lottery_timestamp),
-        Jackpot(id=1, money=jackpot),
-    ])
-    await session.flush()
-
-
-async def _get_balance(db_session, discord_id: int) -> int:
-    stmt = (
-        select(Balance.balance)
-        .join(User, User.id == Balance.id)
-        .where(User.discord_id == discord_id)
-    )
-    res = await db_session.execute(stmt)
-    return res.scalar_one()
 
 
 # ---------- tests ----------
@@ -80,18 +35,21 @@ async def _get_balance(db_session, discord_id: int) -> int:
     "win_5th",
     "win_grand",
 ])
-async def test_lottery_scenarios(db_session, try_data, mock_externals, monkeypatch, scenario_name, uow):
+async def test_lottery_scenarios(db_session, seed_user, get_balance, now, try_data, mock_externals, monkeypatch, scenario_name, uow):
     scenario = try_data["lottery"][scenario_name]
     setup = scenario["setup"]
     expected = scenario["expected"]
     discord_id = try_data["user"]["discord_id"]
 
     # === ARRANGE ===
-    await _seed_user(
-        db_session, discord_id,
+    await seed_user(
+        discord_id,
         balance=setup["balance"], status=setup["status"], luck_factor=setup["luck_factor"],
-        lottery_timestamp=NOW - setup["time_since_last"], jackpot=setup["jackpot"],
+        lottery=now - setup["time_since_last"],
     )
+    # one Jackpot row: get_lottery_info reads it via subquery, update_lottery_and_user writes it
+    db_session.add(Jackpot(id=1, money=setup["jackpot"]))
+    await db_session.flush()
 
     if scenario["mock_randint"] is not None:
         monkeypatch.setattr(
@@ -119,7 +77,7 @@ async def test_lottery_scenarios(db_session, try_data, mock_externals, monkeypat
 
     # balance in the DB after the real UnitOfWork transaction
     db_session.expire_all()
-    actual_balance = await _get_balance(db_session, discord_id)
+    actual_balance = await get_balance(discord_id)
     assert actual_balance == expected["balance"], (
         f"[{scenario_name}] balance: expected {expected['balance']}, got {actual_balance}"
     )
