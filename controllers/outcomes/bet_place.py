@@ -58,6 +58,7 @@ async def logic(user_id: int, guild_id :int, amount: int, bet: str, choice: str,
 
             # placing bet in DB and getting result
             result =  await uow.bets.process_place_bet(user_id, bet, choice, amount, guild_id)
+            if result.outcome != BetPlaceType.SUCCESS: return result
             logger.debug(f"Result received from DB_place_bet", result)
             await uow.commit()
             return result
