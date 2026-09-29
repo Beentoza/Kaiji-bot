@@ -39,7 +39,6 @@ def try_data():
 def mock_externals(monkeypatch):
     # log_try_event writes Events, add_balance_history writes a shared buffer: stub both
     monkeypatch.setattr("controllers.try_cmds.lottery.get_timestamp", lambda: NOW)
-    monkeypatch.setattr("controllers.try_cmds.lottery.db_logs.log_try_event", AsyncMock())
     monkeypatch.setattr("controllers.try_cmds.lottery.timed_tasks.add_balance_history", AsyncMock())
 
 
@@ -81,7 +80,7 @@ async def _get_balance(db_session, discord_id: int) -> int:
     "win_5th",
     "win_grand",
 ])
-async def test_lottery_scenarios(db_session, try_data, mock_externals, monkeypatch, scenario_name):
+async def test_lottery_scenarios(db_session, try_data, mock_externals, monkeypatch, scenario_name, uow):
     scenario = try_data["lottery"][scenario_name]
     setup = scenario["setup"]
     expected = scenario["expected"]
@@ -104,6 +103,7 @@ async def test_lottery_scenarios(db_session, try_data, mock_externals, monkeypat
     result = await lottery_logic(
         interaction_user_id=discord_id,
         interaction_guild_id=999,
+        unit_of_work=uow,
     )
 
     # === ASSERT ===

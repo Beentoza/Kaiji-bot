@@ -24,7 +24,7 @@ services:
     volumes:
       - .:/app
     environment:
-      DATABASE_URI: postgresql+asyncpg://lucky:tucky@db:5432/kaiji_tests
+      TEST_DATABASE_URI: postgresql+asyncpg://lucky:tucky@db:5432/kaiji_tests
     depends_on:
       db:
         condition: service_healthy

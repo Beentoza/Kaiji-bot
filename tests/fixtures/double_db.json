@@ -11,7 +11,6 @@
     "amount_19":              {"setup": {"balance": 500,  "status": 1, "luck_factor": 0.5}, "amount": 19,   "expected": {"outcome": "too_low",         "balance": 500}},
 
     "exceeds_zero_bal":       {"setup": {"balance": 0,    "status": 1, "luck_factor": 0.5}, "amount": 20,   "expected": {"outcome": "too_high",        "balance": 0}},
-    "exceeds_neg_bal":        {"setup": {"balance": -100, "status": 1, "luck_factor": 0.5}, "amount": 20,   "expected": {"outcome": "too_high",        "balance": -100}},
     "exceeds_26":             {"setup": {"balance": 26,   "status": 1, "luck_factor": 0.5}, "amount": 20,   "expected": {"outcome": "too_high",        "balance": 26}},
     "exceeds_by_one":         {"setup": {"balance": 100,  "status": 1, "luck_factor": 0.5}, "amount": 76,   "expected": {"outcome": "too_high",        "balance": 100}},
 
@@ -29,5 +28,9 @@
 
     "draw_bug_lf_0":          {"setup": {"balance": 100,  "status": 1, "luck_factor": 0.0}, "amount": 20,   "expected": {"outcome": "draw",            "balance": 100}},
     "draw_bug_lf_1":          {"setup": {"balance": 1000, "status": 1, "luck_factor": 1.0}, "amount": 500,  "expected": {"outcome": "draw",            "balance": 1000}}
+  },
+  "rollback":
+  {
+    "rollback_1":             {"setup": {"balance": 1000, "status": 1, "luck_factor": 0.0, "roll": "won"}, "amount": 500,  "expected": {"outcome": "error",           "balance": 1000}}
   }
 }

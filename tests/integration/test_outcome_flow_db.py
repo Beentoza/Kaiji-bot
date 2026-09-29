@@ -13,12 +13,11 @@ from database.models.Timestamps import Timestamp
 from database.models.UserData import UserData
 from database.models.Bets import Bet
 from database.models.models import BetStatus
-
-from database.db_functions.db_bet import process_place_bet
-from database.db_functions.db_outcome_logic import settle_bet, refund_bet
 from helpers.BetTypes import BetEndType
 from database.uow import UnitOfWork
 from helpers.BetTypes import BetPlaceType
+
+from controllers.outcomes import bet_place, outcome_end, outcome_cancel
 
 # starting balance, same as db_user.add_new_user (expected.balances are computed from it)
 pytestmark = pytest.mark.integration
@@ -86,22 +85,21 @@ async def _seed_bet(db_session, scenario, end_timestamp: float):
     await db_session.commit()
 
 
-async def _place_participations(scenario, data):
+async def _place_participations(scenario, data, uow):
     if scenario["bet"] is None:
         return
     bet_info = scenario["bet"]
-    async with UnitOfWork() as uow:
-        for p in scenario["participations"]:
-            user_discord_id = data["users"][p["user"]]["discord_id"]
-            result = await process_place_bet(
-                session=uow.session,
-                user_discord_id=user_discord_id,
-                bet_theme=bet_info["theme"],
-                choice_text=p["choice"],
-                amount=p["amount"],
-                server_id=bet_info["server_id"],
-            )
-            assert result.outcome is BetPlaceType.SUCCESS, f"failed to place bet for {p['user']}: {result}"
+    for p in scenario["participations"]:
+        user_discord_id = data["users"][p["user"]]["discord_id"]
+        result = await bet_place.logic(
+            user_id=user_discord_id,
+            bet=bet_info["theme"],
+            choice=p["choice"],
+            amount=p["amount"],
+            guild_id=bet_info["server_id"],
+            unit_of_work=uow
+        )
+        assert result.outcome is BetPlaceType.SUCCESS, f"failed to place bet for {p['user']}: {result}"
 
 
 async def _get_balance(db_session, discord_id: int) -> int:
@@ -137,7 +135,7 @@ def _normalize_outcome(expected_outcome):
     "bet_not_found",            # early return
     "open_bet",                 # time_check: bet not closed yet
 ])
-async def test_settlement_scenarios(db_session, data, mock_log_bet_event, scenario_name):
+async def test_settlement_scenarios(db_session, data, mock_log_bet_event, scenario_name, uow):
     scenario = data["scenarios"][scenario_name]
     expected = scenario["expected"]
     settlement = scenario["settlement"]
@@ -146,7 +144,7 @@ async def test_settlement_scenarios(db_session, data, mock_log_bet_event, scenar
     await _seed_all_users(db_session, data)
     future_ts = time.time() + 3600
     await _seed_bet(db_session, scenario, end_timestamp=future_ts)
-    await _place_participations(scenario, data)
+    await _place_participations(scenario, data, uow)
 
     # === ACT ===
     # settle_before_end -> close before end_ts to get the open_bet status

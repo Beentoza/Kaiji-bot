@@ -3,6 +3,7 @@ import sys
 import hashlib
 from pathlib import Path
 
+import pytest
 from dotenv import load_dotenv
 from sqlalchemy import inspect, text
 from sqlalchemy.dialects import postgresql
@@ -16,13 +17,16 @@ from database.factory import Base
 
 from database.models import Users, Balances, Bets, BetParticipation  # noqa: F401
 from database.models import OutcomeEvents, BetEvents, ChancesData    # noqa: F401
+from database.uow import UnitOfWork
 
 env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
-# take the prod URI and swap the database name for the test one
-_boevoy_url = make_url(os.environ["DATABASE_URI"])
-TEST_DATABASE_URL = _boevoy_url.set(database="kaiji_tests").render_as_string(hide_password=False)
+# take the test URI
+TEST_DATABASE_URL = make_url(os.environ["TEST_DATABASE_URI"])
+
+if make_url(TEST_DATABASE_URL).database != "kaiji_tests":
+    raise RuntimeError(f"tests must run on kaiji_tests, got {TEST_DATABASE_URL!r}")
 
 # force a schema rebuild (in case kaiji_tests was touched by hand)
 FORCE_RESET = os.environ.get("RESET_TEST_SCHEMA") == "1"
@@ -92,32 +96,45 @@ async def _connection():
         await engine.dispose()
 
 
-@pytest_asyncio.fixture(loop_scope="session")
-async def db_session(_connection, monkeypatch):
-    # join_transaction_mode="create_savepoint" makes the code-under-test's own
-    # session.commit() release a savepoint instead of committing, so rolling back
-    # `nested` below undoes everything the UnitOfWork "committed".
-    nested = await _connection.begin_nested()
 
+@pytest_asyncio.fixture
+async def TestSessionLocal(_connection):
     TestSessionLocal = async_sessionmaker(
-        bind=_connection,
+        bind=_connection, # one connection for tests
         expire_on_commit=False,
         class_=AsyncSession,
         autoflush=False,
         join_transaction_mode="create_savepoint",
     )
 
-    monkeypatch.setattr(factory, "SessionLocal", TestSessionLocal)
-    for module_name, module in list(sys.modules.items()):
-        if module is None or module is factory:
-            continue
-        if getattr(module, "SessionLocal", None) is not None:
-            if module_name.startswith(("database.", "services.", "helpers.")):
-                monkeypatch.setattr(module, "SessionLocal", TestSessionLocal, raising=False)
+    # join_transaction_mode="create_savepoint" makes the code-under-test's own
+    # session.commit() release a savepoint instead of committing, so rolling back
+    # `nested` below undoes everything the UnitOfWork "committed".
+     # after every test we rollback changes
+    nested = await _connection.begin_nested()
 
     try:
-        async with TestSessionLocal() as session:
-            yield session
+
+        yield TestSessionLocal
     finally:
+
         if nested.is_active:
             await nested.rollback()
+
+
+
+
+
+@pytest.fixture
+def uow(TestSessionLocal):
+    return UnitOfWork(session_factory=TestSessionLocal)
+
+
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def db_session(TestSessionLocal):
+    async with TestSessionLocal() as session:
+        yield session
+
+

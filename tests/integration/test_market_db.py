@@ -38,7 +38,6 @@ def try_data():
 def mock_externals(monkeypatch):
     # log_try_event writes Events, add_balance_history writes a shared buffer: stub both
     monkeypatch.setattr("controllers.try_cmds.market.get_timestamp", lambda: NOW)
-    monkeypatch.setattr("controllers.try_cmds.market.db_logs.log_try_event", AsyncMock())
     monkeypatch.setattr("controllers.try_cmds.market.timed_tasks.add_balance_history", AsyncMock())
 
 
@@ -79,7 +78,7 @@ async def _get_balance(db_session, discord_id: int) -> int:
     "lose",
     "all_in_win",
 ])
-async def test_market_scenarios(db_session, try_data, mock_externals, monkeypatch, scenario_name):
+async def test_market_scenarios(db_session, try_data, mock_externals, monkeypatch, scenario_name, uow):
     scenario = try_data["market"][scenario_name]
     setup = scenario["setup"]
     expected = scenario["expected"]
@@ -102,6 +101,7 @@ async def test_market_scenarios(db_session, try_data, mock_externals, monkeypatc
     result = await market_logic(
         interaction_user_id=discord_id,
         interaction_guild_id=999,
+        unit_of_work=uow,
         amount=scenario["amount"],
     )
 
