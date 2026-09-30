@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import hashlib
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -23,6 +24,10 @@ from database.models.Balances import Balance
 from database.models.Statuses import Status
 from database.models.UserData import UserData
 from database.models.Timestamps import Timestamp
+from database.models.BetEvents import BetEvents, BetEventType
+from database.models.Bets import Bet
+from database.models.OutcomeEvents import OutcomeEvents, OutcomeEventType
+from database.models.models import BetStatus
 from database.uow import UnitOfWork
 
 env_path = Path(__file__).resolve().parent.parent / ".env"
@@ -173,6 +178,51 @@ def seed_user(db_session):
         ])
         await db_session.flush()
         return new_user.id
+    return _seed
+
+
+@pytest.fixture
+def seed_outcome(db_session):
+    # the rows outcome_create leaves behind (db_outcome.add_new_bet): the Bet and its 'created' event.
+    # end_timestamp defaults to an hour ahead on the REAL clock: bet_place checks time.time(), not NOW
+    async def _seed(theme, server_id, creator_pk, options=("a", "b"), end_timestamp=None,
+                    status=BetStatus.ACTIVE, channel_id=None, message_id=None):
+        if end_timestamp is None:
+            end_timestamp = int(time.time()) + 3600
+        bet = Bet(theme=theme, server_id=server_id, options=list(options), end_timestamp=end_timestamp,
+                  status=status.value, channel_id=channel_id, message_id=message_id)
+        db_session.add(bet)
+        await db_session.flush()  # populate bet.id for the event
+
+        db_session.add(OutcomeEvents(
+            user_id=creator_pk, outcome_id=bet.id, outcome_name=theme, server_id=server_id,
+            event_type=OutcomeEventType.created, timestamp=NOW,
+        ))
+        await db_session.flush()
+        return bet.id
+    return _seed
+
+
+@pytest.fixture
+def seed_withdrawn(db_session):
+    async def _seed(user_pk, bet_id, server_id, option, money):
+        db_session.add(BetEvents(
+            user_id=user_pk, outcome_id=bet_id, server_id=server_id,
+            event_type=BetEventType.withdrawn, option=option, amount=money, timestamp=NOW,
+        ))
+        await db_session.flush()
+    return _seed
+
+@pytest.fixture
+def seed_place(db_session):
+    async def _seed(user_pk, bet_id, server_id, option, money):
+        db_session.add_all([BetEvents(
+            user_id=user_pk, outcome_id=bet_id, server_id=server_id,
+            event_type=BetEventType.placed, option=option, amount=money, timestamp=NOW,
+        ),
+            BetParticipation(bet_id=bet_id, user_id=user_pk, option=option, money=money)
+        ])
+        await db_session.flush()
     return _seed
 
 
