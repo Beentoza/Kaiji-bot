@@ -1,3 +1,5 @@
+import time
+
 import pytest
 from sqlalchemy import select
 
@@ -143,10 +145,10 @@ async def _assert_refunded(db_session, before, result, bet_id, refunds, channel_
 
 
 @pytest.mark.parametrize("theme, server_id, status, expected", [
-    pytest.param("match", 1, constants.STATUS_USER,  BetEndType.NO_RIGHTS,     id="no_rights"),
-    pytest.param("cup",   1, constants.STATUS_ADMIN, BetEndType.BET_NOT_FOUND, id="no_such_bet"),
+    pytest.param(*TARGET,     constants.STATUS_USER,  BetEndType.NO_RIGHTS,     id="no_rights"),
+    pytest.param(*NOT_SEEDED, constants.STATUS_ADMIN, BetEndType.BET_NOT_FOUND, id="no_such_bet"),
 ])
-async def test_cancel_rejected(db_session, seed_user,seed_outcome,board,get_balance, uow, theme, server_id, status, expected):
+async def test_cancel_rejected(db_session, seed_user, board, uow, theme, server_id, status, expected):
     await seed_user(USER, balance=0, status=status)
     before = await _snapshot(db_session)
     result = await logic(USER, theme, server_id, uow)
@@ -156,13 +158,13 @@ async def test_cancel_rejected(db_session, seed_user,seed_outcome,board,get_bala
 @pytest.mark.parametrize("theme, server_id, status, bet_status", [
     # status = the canceller's (the threshold itself and above); bet_status = the outcome's:
     # cancel doesn't look at it, so open, expired and closed outcomes all go the same way
-    pytest.param("match", 1, constants.STATUS_OUTCOME_CREATOR, BetStatus.ACTIVE,      id="active"),
-    pytest.param("derby", 2, constants.STATUS_ADMIN,           BetStatus.IN_PROGRESS, id="in_progress"),
-    pytest.param("final", 3, constants.STATUS_ADMIN,           BetStatus.CLOSED,      id="closed"),
+    pytest.param(*TARGET,    constants.STATUS_OUTCOME_CREATOR, BetStatus.ACTIVE,      id="active"),
+    pytest.param(*TARGET, constants.STATUS_ADMIN,           BetStatus.IN_PROGRESS, id="in_progress"),
+    pytest.param(*TARGET, constants.STATUS_ADMIN,           BetStatus.CLOSED,      id="closed"),
 ])
 async def test_cancel_empty(db_session, seed_user,seed_outcome,board, uow, theme, server_id, status, bet_status):
     user_pk = await seed_user(USER, balance=0, status=status)
-    bet_id = await seed_outcome(theme=theme, server_id=server_id, creator_pk=user_pk, channel_id=CHANNEL_ID, message_id=MESSAGE_ID)
+    bet_id = await seed_outcome(theme=theme, server_id=server_id, creator_pk=user_pk, channel_id=CHANNEL_ID, message_id=MESSAGE_ID,status=bet_status)
     before = await _snapshot(db_session)
     result = await logic(USER, theme, server_id, uow)
     await _assert_emptied(db_session, before, result, bet_id, CHANNEL_ID, MESSAGE_ID)
@@ -175,7 +177,7 @@ async def test_cancel_empty(db_session, seed_user,seed_outcome,board, uow, theme
 async def test_cancel_with_users(db_session, seed_user,seed_outcome,board,seed_place,seed_withdrawn, uow, theme, server_id, status, bet_status):
     user_pk = await seed_user(USER, balance=0, status=status)
     bet_id = await seed_outcome(theme=theme, server_id=server_id, creator_pk=user_pk, channel_id=CHANNEL_ID,
-                                message_id=MESSAGE_ID)
+                                message_id=MESSAGE_ID, status=bet_status)
     refunds = await _seed_participants(seed_user, seed_place, seed_withdrawn, bet_id, TARGET[1])
     before = await _snapshot(db_session)
     result = await logic(USER, theme, server_id, uow)
