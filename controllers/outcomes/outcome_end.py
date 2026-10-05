@@ -49,7 +49,7 @@ async def _display_name(guild, uid) -> str:
 
 async def _build_result_embeds(guild, embed, result, choice, outcome_name):
     """Losers embed, winners embed and the ping list for a paid-out bet."""
-    winners, losers = _split_payouts(result.payouts, choice)
+    winners, losers = _split_payouts(result.stakes, choice)
     embed_red = embed(title='Losers', color=0xff0000)
     embed_green = embed(title='Winners', color=0x00ff00)
     pings = []
@@ -62,7 +62,7 @@ async def _build_result_embeds(guild, embed, result, choice, outcome_name):
     for uid, amount in winners:
         logger.debug(f"{uid} won {amount} in {outcome_name}")
         pings.append(f'<@{uid}>')
-        profit = int(amount * result.koef)
+        profit = result.payouts[uid] - amount
         embed_green.add_field(name=await _display_name(guild, uid), value=f'{amount} + {profit}', inline=False)
 
     return embed_red, embed_green, pings
@@ -105,14 +105,14 @@ async def logic(user_id, outcome_name, server_id, win_option, time_now, unit_of_
 
         # calculate_payouts only ever returns "refund" or "payout"
         logger.debug("execute payout step")
-        await uow.settlement.execute_payout_step(outcome_info["id"], rows, outcome_info["win_index"])
+        await uow.settlement.execute_payout_step(outcome_info["id"], rows, outcome_info["win_index"], calc['payout'])
         await uow.commit()
 
     logger.info(f"Successfully ended outcome {outcome_name}")
     return BetEndResult(
         outcome=BetEndType.SUCCESS,
-        payouts=calc["outcome"],
-        koef=calc["koef"],
+        stakes=calc["outcome"],
+        payouts=calc["payout"],
         channel_id=outcome_info["channel_id"],
         message_id=outcome_info["message_id"],
     )

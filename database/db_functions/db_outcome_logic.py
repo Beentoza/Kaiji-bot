@@ -60,25 +60,18 @@ class OutcomeSettlementRepository:
         await self.session.execute(update(OutcomeEvents).where(OutcomeEvents.outcome_id == bet_id).values(event_type=OutcomeEventType('cancelled')))
 
 
-    async def execute_payout_step(self, bet_id, rows, win_index):
+    async def execute_payout_step(self, bet_id, rows, win_index, payout):
         """Giving/withdraw money to users and deleting bet"""
         winner_balance_ids = []
         loser_balance_ids = []
 
-        # integer payout, no float: winner gets stake + stake * loser_sum // win_sum.
-        # the remainder of // is dropped (stays in the bank). only reached when both
-        # sums are > 0 (calculate_payouts already guards that), so no division by zero.
-        win_sum = sum(r['bet_money_amount'] for r in rows if r['bet_option'] == win_index)
-        loser_sum = sum(r['bet_money_amount'] for r in rows if r['bet_option'] != win_index)
-
         for row in rows:
             if row['bet_option'] == win_index:
-                payout = row['bet_money_amount'] + row['bet_money_amount'] * loser_sum // win_sum
                 # atomic SQL increment instead of read-modify-write on the ORM object
                 await self.session.execute(
                     update(Balance)
                     .where(Balance.id == row['balance_id'])
-                    .values(balance=Balance.balance + payout)
+                    .values(balance=Balance.balance + payout[row['user_discord_id']])
                 )
                 winner_balance_ids.append(row['balance_id'])
             else:

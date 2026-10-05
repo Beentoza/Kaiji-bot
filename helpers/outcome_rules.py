@@ -33,5 +33,10 @@ def calculate_payouts(rows, opts, choice) -> dict:
     if len(active_options) < 2 or win_summ == 0 or looser_summ == 0:
         return {"action": "refund", "outcome": outcome}
 
-    koef = looser_summ / win_summ
-    return {"action": "payout", "outcome": outcome, "koef": koef}
+
+    payout = {}
+    for row in rows:
+        option = opts[row['bet_option']]
+        if option == choice:
+            payout[row['user_discord_id']] = row['bet_money_amount']+row['bet_money_amount'] * looser_summ // win_summ
+    return {"action": "payout", "outcome": outcome, "payout": payout}

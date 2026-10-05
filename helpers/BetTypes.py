@@ -56,8 +56,8 @@ class BetEndType(enum.Enum):
 class BetEndResult:
     """Logic function returning"""
     outcome: BetEndType
-    payouts: dict = None
-    koef: float = 0
+    stakes: dict = None    # {option: {discord_id: stake}}
+    payouts: dict = None   # {discord_id: amount credited}, winners only
     channel_id: int = None
     message_id: int = None
 

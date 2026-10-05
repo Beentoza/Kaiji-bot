@@ -279,3 +279,5 @@ async def test_end_payout(db_session, seed_user, seed_outcome, board, seed_place
 
     result = await logic(USER, theme, server_id, win_option, int(time.time()), uow)
     await _assert_paid(db_session, before, result, bet_id, payouts, CHANNEL_ID, MESSAGE_ID)
+    # the result message prints result.payouts: it must be exactly what reached the balances
+    assert result.payouts == paid
