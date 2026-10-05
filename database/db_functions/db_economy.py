@@ -94,6 +94,7 @@ class EconomyRepository:
                 .join(Timestamp, User.id == Timestamp.id)
                 .join(UserData, User.id == UserData.id)
                 .where(User.discord_id == user_id)
+                .with_for_update(of=[Timestamp, Balance])
             )
             result = await self.session.execute(stmt)
             return result.one_or_none()

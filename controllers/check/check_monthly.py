@@ -56,12 +56,13 @@ async def logic(interaction_user_id, interaction_guild_id, unit_of_work):
 
         timestamp_now = get_timestamp()
         time_difference = abs(monthly_timestamp - timestamp_now)
-        if monthly_timestamp != 0 and time_difference < MONTH:
+        result = await uow.timestamps.claim_monthly(user_id=user_id, time=timestamp_now)
+
+        if not result:
             return MonthlyResult(outcome=MonthlyOutcome.COOLDOWN, seconds_left=MONTH - time_difference)
 
         monthly_multiplier = random.uniform(MONTHLY_MULT_MIN, MONTHLY_MULT_MAX)
         new_balance = await uow.user.multiply_user_balance(user_id=user_id, factor=monthly_multiplier)
-        await uow.timestamps.set_monthly_time(user_id=user_id, time=timestamp_now)
         await uow.commit()
 
     await timed_tasks.add_balance_history(interaction_user_id, interaction_guild_id, 'check', 'monthly', new_balance - balance, new_balance)

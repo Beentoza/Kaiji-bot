@@ -14,6 +14,13 @@ from database.db_functions.db_user import UserRepository
 
 
 class UnitOfWork:
+    """
+    Lock order: when one transaction locks rows in several tables, take them in this order:
+        bets -> timestamps -> balances -> user_data -> bet_events / outcome_events / bet_participation
+             -> jackpot / world_state
+        user_items -> user_effects
+   """
+
     def __init__(self, session_factory=SessionLocal):
         self._session_factory = session_factory
 

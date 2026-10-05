@@ -52,11 +52,12 @@ async def logic(interaction_user_id, interaction_guild_id, unit_of_work):
 
         timestamp_now = get_timestamp()
         time_difference = abs(daily_timestamp - timestamp_now)
-        if daily_timestamp != 0 and time_difference < DAY:
+        result = await uow.timestamps.claim_daily(user_id=user_id, time=timestamp_now)
+
+        if not result:
             return DailyResult(outcome=DailyOutcome.COOLDOWN, seconds_left=DAY - time_difference)
 
         await uow.user.add_user_balance(user_id=user_id, amount=DAILY_ALLOWANCE)
-        await uow.timestamps.set_daily_time(user_id=user_id, time=timestamp_now)
         await uow.commit()
 
     new_balance = balance + DAILY_ALLOWANCE

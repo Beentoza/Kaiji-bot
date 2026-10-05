@@ -54,7 +54,9 @@ async def logic(interaction_user_id, interaction_guild_id, unit_of_work):
 
         timestamp_now = get_timestamp()
         time_difference = abs(weekly_timestamp - timestamp_now)
-        if weekly_timestamp != 0 and time_difference < WEEK:
+        result = await uow.timestamps.claim_weekly(user_id=user_id, time=timestamp_now)
+
+        if not result:
             return WeeklyResult(outcome=WeeklyOutcome.COOLDOWN, seconds_left=WEEK - time_difference)
 
         # giving user random number, capping a loss so balance can't go negative
@@ -64,7 +66,6 @@ async def logic(interaction_user_id, interaction_guild_id, unit_of_work):
             logger.debug(f"Adjusting loss for user {user_id}")
 
         await uow.user.add_user_balance(user_id=user_id, amount=weekly_amount)
-        await uow.timestamps.set_weekly_time(user_id=user_id, time=timestamp_now)
         await uow.commit()
 
     new_balance = balance + weekly_amount
