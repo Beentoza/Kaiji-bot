@@ -26,43 +26,6 @@ def try_data():
         return json.load(f)
 
 
-class _FakeUoW:
-    def __init__(self):
-        self.session = AsyncMock()
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        return False
-
-
-@pytest.fixture
-def mocks(monkeypatch):
-    m = {
-        "get_timestamp_balance_status": AsyncMock(),
-        "set_market_time": AsyncMock(),
-        "log_try_event": AsyncMock(),
-        "add_user_balance": AsyncMock(),
-        "add_to_jackpot": AsyncMock(),
-        "add_balance_history": AsyncMock(),
-    }
-    monkeypatch.setattr("controllers.try_cmds.market.UnitOfWork", _FakeUoW)
-    monkeypatch.setattr("controllers.try_cmds.market.get_timestamp", lambda: NOW)
-    monkeypatch.setattr(
-        "controllers.try_cmds.market.db_economy.get_timestamp_balance_status",
-        m["get_timestamp_balance_status"],
-    )
-    monkeypatch.setattr("controllers.try_cmds.market.db_time.set_market_time", m["set_market_time"])
-    monkeypatch.setattr("controllers.try_cmds.market.db_logs.log_try_event", m["log_try_event"])
-    monkeypatch.setattr("controllers.try_cmds.market.db_user.add_user_balance", m["add_user_balance"])
-    monkeypatch.setattr("controllers.try_cmds.market.db_economy.add_to_jackpot", m["add_to_jackpot"])
-    monkeypatch.setattr(
-        "controllers.try_cmds.market.timed_tasks.add_balance_history", m["add_balance_history"]
-    )
-    return m
-
-
 @pytest.mark.parametrize("scenario_name", [
     "ban",
     "amount_negative",
@@ -76,15 +39,19 @@ def mocks(monkeypatch):
     "lose",
     "all_in_win",
 ])
-async def test_market_logic(try_data, mocks, monkeypatch, scenario_name):
+async def test_market_logic(try_data, monkeypatch, scenario_name, fake_uow):
     scenario = try_data["scenarios"][scenario_name]
     setup = scenario["setup"]
     expected = scenario["expected"]
     discord_id = try_data["user"]["discord_id"]
 
     # === ARRANGE ===
+    monkeypatch.setattr("controllers.try_cmds.market.get_timestamp", lambda: NOW)
+    # called after the uow block, not through it -> still patched on the module
+    monkeypatch.setattr("controllers.try_cmds.market.timed_tasks.add_balance_history", AsyncMock())
+
     market_timestamp = NOW - setup["time_since_last"]
-    mocks["get_timestamp_balance_status"].return_value = (
+    fake_uow.economy.get_timestamp_balance_status.return_value = (
         market_timestamp, setup["balance"], setup["status"], setup["luck_factor"],
     )
 
@@ -99,6 +66,7 @@ async def test_market_logic(try_data, mocks, monkeypatch, scenario_name):
         interaction_user_id=discord_id,
         interaction_guild_id=999,
         amount=scenario["amount"],
+        unit_of_work=fake_uow,
     )
 
     # === ASSERT ===
@@ -112,11 +80,11 @@ async def test_market_logic(try_data, mocks, monkeypatch, scenario_name):
     # money moves through add_user_balance(amount=delta)
     delta = expected["balance"] - setup["balance"]
     if delta == 0:
-        mocks["add_user_balance"].assert_not_called()
+        fake_uow.user.add_user_balance.assert_not_called()
     else:
-        mocks["add_user_balance"].assert_awaited_once()
-        assert mocks["add_user_balance"].await_args.kwargs["amount"] == delta, (
+        fake_uow.user.add_user_balance.assert_awaited_once()
+        assert fake_uow.user.add_user_balance.await_args.kwargs["amount"] == delta, (
             f"[{scenario_name}] delta: expected {delta}, "
-            f"got {mocks['add_user_balance'].await_args.kwargs.get('amount')!r}"
+            f"got {fake_uow.user.add_user_balance.await_args.kwargs.get('amount')!r}"
         )
         assert result.delta == delta

@@ -2,7 +2,6 @@ import enum
 import discord
 from discord import ui
 
-from database.db_functions import db_admin, db_items
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 
@@ -38,21 +37,22 @@ def _format_add_effect_message(outcome, mention, item_name):
 
 async def _is_admin(user_id):
     async with UnitOfWork() as uow:
-        return await db_admin.is_admin(uow.session, user_id)
+        is_admin = await uow.admin.is_admin(user_id)
+        await uow.commit()
+        return is_admin
 
 
 async def _save(user_id, item_name, in_casino, role_id, emoji, on_author, duration):
     """Create the item. Returns an AddEffectOutcome."""
     async with UnitOfWork() as uow:
-        if not await db_admin.is_admin(uow.session, user_id):
+        if not await uow.admin.is_admin(user_id):
             return AddEffectOutcome.NOT_ADMIN
 
-        if await db_items.item_name_exists(uow.session, item_name):
+        if await uow.items.item_name_exists(item_name):
             return AddEffectOutcome.NAME_EXISTS
 
         # adding item into DB
-        await db_items.add_item(
-            session=uow.session,
+        await uow.items.add_item(
             item_name=item_name,
             in_casino=in_casino,
             role=role_id,
@@ -60,6 +60,7 @@ async def _save(user_id, item_name, in_casino, role_id, emoji, on_author, durati
             on_author=on_author,
             duration=duration,
         )
+        await uow.commit()
 
     logger.info(f"Admin {user_id} added item {item_name}")
     return AddEffectOutcome.SUCCESS

@@ -1,7 +1,6 @@
 import enum
 import dataclasses
 
-from database.db_functions import db_user, db_effects, db_items
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 import discord
@@ -53,15 +52,15 @@ def _format_item_use_message(result, target_mention):
     return "Error occurred"
 
 
-async def logic(interaction_user_id, interaction_guild_id, item_name: str, target_id: int):
+async def logic(interaction_user_id, interaction_guild_id, item_name: str, target_id: int, unit_of_work):
     try:
         # the whole use is one transaction: if the effect is already active
         # we raise to roll back the consume, so the item is not lost
-        async with UnitOfWork() as uow:
-            if not await db_user.check_user_exists(uow.session, user_id=interaction_user_id):
+        async with unit_of_work as uow:
+            if not await uow.user.check_user_exists(user_id=interaction_user_id):
                 return ItemUseResult(outcome=ItemUseOutcome.NO_USER, item_name=item_name)
 
-            settings = await db_items.get_item_settings(uow.session, item_name)
+            settings = await uow.items.get_item_settings(item_name)
             if settings is None:
                 logger.warning(f"User {interaction_user_id} tried to use unknown item {item_name}")
                 return ItemUseResult(outcome=ItemUseOutcome.UNKNOWN_ITEM, item_name=item_name)
@@ -73,7 +72,7 @@ async def logic(interaction_user_id, interaction_guild_id, item_name: str, targe
             # duration is in hours, effects work in minutes
             duration_minutes = (settings.duration or 1) * 60
 
-            success = await db_items.consume_item(uow.session, interaction_user_id, item_name)
+            success = await uow.items.consume_item(interaction_user_id, item_name)
             if not success:
                 logger.warning(f"User {interaction_user_id} tried to use {item_name} but has 0 in DB")
                 return ItemUseResult(outcome=ItemUseOutcome.NOT_OWNED, item_name=item_name)
@@ -82,8 +81,7 @@ async def logic(interaction_user_id, interaction_guild_id, item_name: str, targe
                 logger.warning(f"Item {item_name} has no role defined in DB")
                 return ItemUseResult(outcome=ItemUseOutcome.NO_ROLE, item_name=item_name, target_id=target_id)
 
-            effect_added = await db_effects.add_user_effect(
-                uow.session,
+            effect_added = await uow.effects.add_user_effect(
                 discord_id=target_id,
                 guild_id=interaction_guild_id,
                 effect_name=item_name,
@@ -92,6 +90,7 @@ async def logic(interaction_user_id, interaction_guild_id, item_name: str, targe
             if not effect_added:
                 raise _EffectAlreadyActive
 
+            await uow.commit()
             logger.info(f"User {interaction_user_id} used {item_name} on {target_id}")
             return ItemUseResult(outcome=ItemUseOutcome.GRANTED, item_name=item_name, role_id=role_id,
                                  target_id=target_id)
@@ -126,6 +125,7 @@ async def handle(interaction, item_name: str, target: discord.Member):
         interaction_guild_id=interaction.guild_id,
         item_name=item_name,
         target_id=target.id,
+        unit_of_work=UnitOfWork(),
     )
 
     # on_author redirects the effect onto the invoking user

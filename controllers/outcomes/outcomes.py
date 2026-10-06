@@ -2,9 +2,8 @@ import discord
 from discord import ui, ButtonStyle, Interaction
 from helpers.logger_config import internal_logger as logger
 from discord import AllowedMentions
-from database.db_functions import db_outcome
 import time
-
+from database.uow import UnitOfWork
 
 class BetsLayoutView(ui.LayoutView):
     def __init__(self, bets_mapping: dict, initial_index: int = 0, timeout: float = 180):
@@ -81,6 +80,54 @@ class BetsLayoutView(ui.LayoutView):
 
 
 
+def build_bets_mapping(active_bets, row_coeff, viewer_id) -> dict:
+    """Turn bets and per-option sums into the dict BetsLayoutView shows. No DB here."""
+    rows_by_bet = {}
+    for r in row_coeff:
+        rows_by_bet.setdefault(r.bet_id, []).append(r)
+
+    bets_mapping = {}
+    for bet in active_bets:
+        bet_rows = rows_by_bet.get(bet.id, [])
+        total_bet_pool = sum((r.sum_amount or 0) for r in bet_rows)
+        opts = bet.options if isinstance(bet.options, list) else []
+
+        bets_mapping[bet.id] = {
+            "author": 635433154471002112,
+            "title": bet.theme,
+            "open_before": bet.end_timestamp,
+            "total_amount": total_bet_pool,
+            "outcomes": {name: {"users": {}} for name in opts}
+        }
+
+        for r in bet_rows:
+            if 0 <= r.option < len(opts):
+                target_name = opts[r.option]
+                bets_mapping[bet.id]["outcomes"][target_name]["total_option_amount"] = r.sum_amount / total_bet_pool * 100
+
+        for p in bet.participations:
+            if 0 <= p.option < len(opts):
+                outcome_name = opts[p.option]
+                current_user_id = p.user.discord_id
+
+                if current_user_id == viewer_id:
+                    display_value = f"{p.money} 👈"
+                else:
+                    display_value = p.money
+
+                bets_mapping[bet.id]["outcomes"][outcome_name]["users"][current_user_id] = display_value
+
+    return bets_mapping
+
+
+async def logic(user_id, guild_id, open: int, participation: int, unit_of_work) -> dict:
+    async with unit_of_work as uow:
+        active_bets, row_coeff = await uow.outcomes.get_outcomes(
+            current_time=time.time(), user_id=user_id, open=open, participation=participation, server_id=guild_id
+        )
+    return build_bets_mapping(active_bets, row_coeff, user_id)
+
+
 async def handle(interaction: Interaction, open: int, participation: int, show: int):
     """Command to see existent outcomes
     open: user can choose open&closed&all
@@ -89,7 +136,8 @@ async def handle(interaction: Interaction, open: int, participation: int, show: 
     logger.debug("Handler started working")
 
     try:
-        res = await db_outcome.get_outcomes(current_time=time.time(), user_id=interaction.user.id, open=open, participation=participation, server_id = interaction.guild_id)
+        res = await logic(user_id=interaction.user.id, guild_id=interaction.guild_id, open=open,
+                          participation=participation, unit_of_work=UnitOfWork())
         if not res:
             return await interaction.followup.send("There's no open outcomes")
         view = BetsLayoutView(res, initial_index=0, timeout=None)

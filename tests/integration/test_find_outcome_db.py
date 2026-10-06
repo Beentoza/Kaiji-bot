@@ -1,15 +1,11 @@
 import pytest
-
 from database.models.Bets import Bet
 from database.models.models import BetStatus
-from database.db_functions.db_outcome_logic import find_outcome
-
 
 pytestmark = pytest.mark.integration
 
 
-async def test_find_outcome_finds_existing_bet(db_session):
-    # === ARRANGE ===
+async def test_find_outcome_finds_existing_bet(db_session, uow):
     bet = Bet(
         theme="test_theme",
         server_id=123,
@@ -22,8 +18,9 @@ async def test_find_outcome_finds_existing_bet(db_session):
     db_session.add(bet)
     await db_session.commit()
 
-    # === ACT ===
-    result = await find_outcome(db_session, "test_theme", 123)
+
+    async with uow:
+        result = await uow.settlement.find_outcome("test_theme", 123)
 
     # === ASSERT === a pure lookup: no validation, just the row
     assert result["id"] == bet.id
@@ -33,5 +30,6 @@ async def test_find_outcome_finds_existing_bet(db_session):
     assert result["message_id"] == 789
 
 
-async def test_find_outcome_returns_none_when_missing(db_session):
-    assert await find_outcome(db_session, "doesnt_exist", 123) is None
+async def test_find_outcome_returns_none_when_missing(uow):
+    async with uow:
+        assert await uow.settlement.find_outcome("doesnt_exist", 123) is None

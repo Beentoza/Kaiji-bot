@@ -6,30 +6,34 @@ from sqlalchemy import select, desc
 import time
 
 
-async def get_leaderboard(session):
-    try:
-        stmt = (
-            select(User.discord_id, Balance.balance)
-            .join(Balance, User.id == Balance.id)
-            .order_by(desc(Balance.balance))
-            .limit(5)
-        )
-        result = await session.execute(stmt)
-        return result.all()
-    except Exception as e:
-        logger.warning(e)
-        raise
+class OtherRepository:
+    def __init__(self, session):
+        self.session = session
+
+    async def get_leaderboard(self):
+        try:
+            stmt = (
+                select(User.discord_id, Balance.balance)
+                .join(Balance, User.id == Balance.id)
+                .order_by(desc(Balance.balance))
+                .limit(5)
+            )
+            result = await self.session.execute(stmt)
+            return result.all()
+        except Exception as e:
+            logger.warning(e)
+            raise
 
 
-async def get_chances_data(session):
-    day_ago_time = time.time() - 604800 // 7
-    try:
-        stmt = (
-            select(Events.event_type, Events.profit, Events.multiplier)
-            .where(Events.timestamp >= day_ago_time)
-        )
-        result = await session.execute(stmt)
-        return result.all()
-    except Exception as e:
-        logger.error(e)
-        raise
+    async def get_chances_data(self):
+        day_ago_time = time.time() - 604800 // 7
+        try:
+            stmt = (
+                select(Events.event_type, Events.profit, Events.multiplier)
+                .where(Events.timestamp >= day_ago_time)
+            )
+            result = await self.session.execute(stmt)
+            return result.all()
+        except Exception as e:
+            logger.error(e)
+            raise

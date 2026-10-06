@@ -1,5 +1,4 @@
 import discord
-from database.db_functions import db_user, db_outcome
 from database.uow import UnitOfWork
 from discord import ui
 from helpers.logger_config import internal_logger as logger
@@ -96,14 +95,14 @@ def _build_outcome_embed(theme, choices, end_timestamp, author) -> discord.Embed
     return embed
 
 
-async def check_logic(user_id: int, guild_id: int, theme: str, choices: str, timer: int, meas: str) -> BetCreateResult:
+async def check_logic(user_id: int, guild_id: int, theme: str, choices: str, timer: int, meas: str, unit_of_work) -> BetCreateResult:
     """Checks before the preview: rights, options, timer, same name"""
     choice_list = tuple(c.strip() for c in choices.split(';') if c.strip())  # changing yes;no to (yes, no)
     multiplier = 60 if meas == 'minute' else 3600  # in menu user can pick either minute or hours
     delta_seconds = timer * multiplier  # we can't work with minutes and hours, so transfering into seconds
 
-    async with UnitOfWork() as uow:
-        status = await db_user.get_user_status(uow.session, user_id)
+    async with unit_of_work as uow:
+        status = await uow.user.get_user_status(user_id)
         if status is None or status < constants.STATUS_REQUIRED_OUTCOME_COMMANDS:
             return BetCreateResult(outcome=BetCreateType.NO_RIGHTS)
 
@@ -116,20 +115,22 @@ async def check_logic(user_id: int, guild_id: int, theme: str, choices: str, tim
             return BetCreateResult(outcome=BetCreateType.BAD_TIMER)
 
         # a fast answer before the form; the unique constraint in add_new_bet is the guarantee
-        if await db_outcome.get_bet_with_same_name(uow.session, theme, guild_id):
+        if await uow.outcomes.get_bet_with_same_name(theme, guild_id):
             logger.info(f"{user_id} tried to make {theme} which already exists")
             return BetCreateResult(outcome=BetCreateType.ALREADY_EXISTS)
+        await uow.commit()
 
     return BetCreateResult(outcome=BetCreateType.VALID, choices=choice_list,
                            end_timestamp=int(time.time() + delta_seconds))
 
 
 async def create_logic(theme: str, choices: tuple, end_timestamp: int, message_id: int, channel_id: int,
-                       guild_id: int, user_id: int) -> BetCreateResult:
+                       guild_id: int, user_id: int, unit_of_work) -> BetCreateResult:
     """Saving the outcome the user confirmed"""
-    async with UnitOfWork() as uow:
-        bet_id = await db_outcome.add_new_bet(uow.session, theme, choices, end_timestamp, message_id,
-                                              channel_id, guild_id, user_id=user_id)
+    async with unit_of_work as uow:
+        bet_id = await uow.outcomes.add_new_bet(theme, choices, end_timestamp, message_id,
+                                                channel_id, guild_id, user_id=user_id)
+        await uow.commit()
     if bet_id is None:  # the same theme was created on this server while the preview was open
         logger.info(f"{user_id} tried to make {theme} which already exists")
         return BetCreateResult(outcome=BetCreateType.ALREADY_EXISTS)
@@ -149,7 +150,7 @@ async def handle(interaction, preset, theme, choices, timer, meas):
         theme = "Who will die first?"
         choices = "1;2;3;4;5;6;7;8"
     try:
-        result = await check_logic(interaction.user.id, interaction.guild_id, theme, choices, timer, meas)
+        result = await check_logic(interaction.user.id, interaction.guild_id, theme, choices, timer, meas, unit_of_work=UnitOfWork())
         if result.outcome is not BetCreateType.VALID:
             return await interaction.followup.send(_format_create_message(result), ephemeral=True)
 
@@ -180,7 +181,8 @@ async def sending_message(interaction: discord.Interaction, theme, choices, end_
     logger.debug(f"Captured message ID: {msg.id}")
     try:
         result = await create_logic(theme, choices, end_timestamp, msg.id,
-                                    interaction.channel_id, interaction.guild_id, interaction.user.id)
+                                    interaction.channel_id, interaction.guild_id, interaction.user.id,
+                                    unit_of_work=UnitOfWork())
     except Exception as e:
         logger.warning(f"Error while tried add outcome {theme} into DB: {e}", exc_info=True)
         result = BetCreateResult(outcome=BetCreateType.ERROR)

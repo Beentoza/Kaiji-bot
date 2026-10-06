@@ -1,4 +1,3 @@
-from database.db_functions import db_user, db_other
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 import numpy as np
@@ -46,11 +45,12 @@ async def handle(interaction):
     try:
         await interaction.response.defer(thinking=True)
         async with UnitOfWork() as uow:
-            user_data = await db_user.get_user_chances_data(uow.session, interaction.user.id)
+            user_data = await uow.user.get_user_chances_data(interaction.user.id)
             if user_data is None:
                 return await interaction.followup.send("I don't have idea who you are")
 
-            data = await db_other.get_chances_data(uow.session)
+            data = await uow.other.get_chances_data()
+            await uow.commit()
 
         user_percents = get_data(user_data)
         percents = get_data(data)

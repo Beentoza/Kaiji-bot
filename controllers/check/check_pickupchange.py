@@ -2,7 +2,6 @@ import enum
 import dataclasses
 import random
 
-from database.db_functions import db_user, db_economy
 from database.uow import UnitOfWork
 from helpers.logger_config import internal_logger as logger
 from helpers.time_handler import get_timestamp
@@ -47,11 +46,11 @@ def _format_pickupchange_message(result, mention):
     return f"{mention} Error occurred"
 
 
-async def logic(interaction_user_id, interaction_guild_id):
+async def logic(interaction_user_id, interaction_guild_id, unit_of_work):
     user_id = interaction_user_id
 
-    async with UnitOfWork() as uow:
-        data = await db_economy.get_pickup_change_info(session=uow.session, user_id=user_id)
+    async with unit_of_work as uow:
+        data = await uow.economy.get_pickup_change_info(user_id=user_id)
         if data is None:
             return PickupChangeResult(outcome=PickupChangeOutcome.ERROR)
 
@@ -63,13 +62,13 @@ async def logic(interaction_user_id, interaction_guild_id):
         # personal cooldown: not passed -> reset personal timer and bail
         if timestamp_now - data["user_timestamp"] < data["user_cooldown"]:
             user_timer = random.randint(PERSONAL_TIMER_MIN, PERSONAL_TIMER_MAX)
-            await db_economy.update_personal_pickupchange_info(session=uow.session, user_id=user_id, timestamp=timestamp_now, cooldown=user_timer)
+            await uow.economy.update_personal_pickupchange_info(user_id=user_id, timestamp=timestamp_now, cooldown=user_timer)
             return PickupChangeResult(outcome=PickupChangeOutcome.PERSONAL_COOLDOWN)
 
         # global cooldown (for everyone): not passed -> reset personal timer and bail
         if timestamp_now - data["global_timestamp"] < data["global_cooldown"]:
             user_timer = random.randint(PERSONAL_TIMER_MIN, PERSONAL_TIMER_MAX)
-            await db_economy.update_personal_pickupchange_info(session=uow.session, user_id=user_id, timestamp=timestamp_now, cooldown=user_timer)
+            await uow.economy.update_personal_pickupchange_info(user_id=user_id, timestamp=timestamp_now, cooldown=user_timer)
             return PickupChangeResult(outcome=PickupChangeOutcome.GLOBAL_COOLDOWN)
 
         user_timer = random.randint(PERSONAL_TIMER_MIN, PERSONAL_TIMER_MAX)
@@ -77,9 +76,10 @@ async def logic(interaction_user_id, interaction_guild_id):
         change_amount = random.randint(CHANGE_MIN, CHANGE_MAX)
         balance = data["balance"]
 
-        await db_user.add_user_balance(session=uow.session, user_id=user_id, amount=change_amount)
-        await db_economy.update_personal_pickupchange_info(session=uow.session, user_id=user_id, timestamp=timestamp_now, cooldown=user_timer)
-        await db_economy.update_global_pickupchange_info(session=uow.session, timestamp=timestamp_now, cooldown=global_timer)
+        await uow.user.add_user_balance(user_id=user_id, amount=change_amount)
+        await uow.economy.update_personal_pickupchange_info(user_id=user_id, timestamp=timestamp_now, cooldown=user_timer)
+        await uow.economy.update_global_pickupchange_info(timestamp=timestamp_now, cooldown=global_timer)
+        await uow.commit()
 
     new_balance = balance + change_amount
     await timed_tasks.add_balance_history(interaction_user_id, interaction_guild_id, 'check', 'pickup_change', change_amount, new_balance)
@@ -93,7 +93,7 @@ async def handle(interaction):
     await interaction.response.defer(thinking=True)
     logger.debug("Handler started work")
     try:
-        result = await logic(interaction_user_id=interaction.user.id, interaction_guild_id=interaction.guild.id)
+        result = await logic(interaction_user_id=interaction.user.id, interaction_guild_id=interaction.guild.id, unit_of_work=UnitOfWork())
         message = _format_pickupchange_message(result, interaction.user.mention)
         await interaction.followup.send(message)
     except Exception as e:

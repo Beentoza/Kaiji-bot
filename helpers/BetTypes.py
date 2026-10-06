@@ -50,13 +50,14 @@ class BetEndType(enum.Enum):
     NOT_OPTION = "not_option"
     NO_PARTICIPANTS = "no_participants"
     NO_WINNERS_OR_LOSERS = "no_winners_or_losers"
+    NO_RIGHTS = "no_rights"
 
 @dataclasses.dataclass(frozen=True)
 class BetEndResult:
     """Logic function returning"""
     outcome: BetEndType
-    payouts: dict = None
-    koef: float = 0
+    stakes: dict = None    # {option: {discord_id: stake}}
+    payouts: dict = None   # {discord_id: amount credited}, winners only
     channel_id: int = None
     message_id: int = None
 
