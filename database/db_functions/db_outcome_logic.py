@@ -203,7 +203,7 @@ class OutcomeSettlementRepository:
 
     async def process_in_progress_bets(self) -> dict:
         logger.debug('Checking if some bets should expire')
-        stmt = select(Bet).where(Bet.status == BetStatus.IN_PROGRESS.value)
+        stmt = select(Bet).where(Bet.status == BetStatus.IN_PROGRESS.value).with_for_update()
         res = await self.session.execute(stmt)
         bets = res.scalars().all()
 
