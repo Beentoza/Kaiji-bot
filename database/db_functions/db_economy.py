@@ -121,6 +121,7 @@ class EconomyRepository:
                 .join(Status, User.id == Status.id)
                 .join(UserData, User.id == UserData.id)
                 .where(User.discord_id == user_id)
+                .with_for_update(of=Balance)
             )
             result = await self.session.execute(stmt)
             return result.one_or_none()
