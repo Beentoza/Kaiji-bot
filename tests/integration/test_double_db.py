@@ -17,8 +17,8 @@ pytestmark = pytest.mark.integration
 
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
-logic_SCENARIOS = json.loads((FIXTURES_DIR / "double_DB.json").read_text(encoding="utf-8"))["double"]
-rollback_SCENARIOS = json.loads((FIXTURES_DIR / "double_DB.json").read_text(encoding="utf-8"))["rollback"]
+logic_SCENARIOS = json.loads((FIXTURES_DIR / "double_db.json").read_text(encoding="utf-8"))["double"]
+rollback_SCENARIOS = json.loads((FIXTURES_DIR / "double_db.json").read_text(encoding="utf-8"))["rollback"]
 
 # ---------- fixtures ----------
 
