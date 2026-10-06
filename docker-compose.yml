@@ -16,20 +16,6 @@ services:
       retries: 3
       start_period: 10s
 
-
-  tests:
-    build:
-      context: .
-      dockerfile: Dockerfile.test
-    volumes:
-      - .:/app
-    environment:
-      TEST_DATABASE_URI: postgresql+asyncpg://lucky:tucky@db:5432/kaiji_tests
-    depends_on:
-      db:
-        condition: service_healthy
-    command: python -m pytest
-
 volumes:
   database:
 

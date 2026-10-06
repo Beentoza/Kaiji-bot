@@ -1,0 +1,17 @@
+repos:
+  - repo: local
+    hooks:
+      - id: unit-tests
+        name: unit tests
+        entry: python -m pytest tests/unit -q
+        language: system
+        types: [python]      
+        pass_filenames: false
+        stages: [pre-commit]
+      - id: integration-tests
+        name: integration tests
+        entry: python -m pytest tests/integration -q
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [pre-push]
