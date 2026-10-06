@@ -48,7 +48,7 @@ def _check_lottery_place(lottery_place):
     return None
 
 
-def _calculate_lottery(luck_factor, jackpot_amount):
+def _calculate_lottery(luck_factor):
     """Translating nubmers from _check_lottery_place to profit, jackpot_change and timer"""
     lottery_luck = min(int(luck_factor * 900), 900)
     lottery_prob = random.randint(0 + lottery_luck, 2000 - lottery_luck)
@@ -57,7 +57,7 @@ def _calculate_lottery(luck_factor, jackpot_amount):
 
     LOTTERY_PRIZES = {
         0: {"profit": -constants.LOTTERY_TICKET_PRICE, "jackpot_change": constants.LOTTERY_TICKET_PRICE, "timer": 0},
-        1: {"profit": constants.LOTTERY_FIRST_PLACE + jackpot_amount, "jackpot_change": -jackpot_amount, "timer": 200},
+        1: {"profit": constants.LOTTERY_FIRST_PLACE, "jackpot_change": 0, "timer": 200},
         2: {"profit": constants.LOTTERY_SECOND_PLACE, "jackpot_change": constants.LOTTERY_TICKET_PRICE, "timer": 0},
         3: {"profit": constants.LOTTERY_THIRD_PLACE, "jackpot_change": constants.LOTTERY_TICKET_PRICE, "timer": 0},
         4: {"profit": constants.LOTTERY_FOURTH_PLACE, "jackpot_change": constants.LOTTERY_TICKET_PRICE, "timer": 0},
@@ -116,7 +116,11 @@ async def logic(interaction_user_id, interaction_guild_id, unit_of_work):
         if time_since_last < constants.COOLDOWN_BETWEEN_TICKETS:
             return LotteryResult(outcome=LotteryOutcome.COOLDOWN, cooldown_left=constants.COOLDOWN_BETWEEN_TICKETS - time_since_last)
 
-        lottery_place, profit, jackpot_change, timer = _calculate_lottery(luck_factor, jackpot_amount)
+        lottery_place, profit, jackpot_change, timer = _calculate_lottery(luck_factor)
+        if lottery_place == 1:
+            # locking jackpot balance, so if 2 players get it at the the same time. It will block
+            jackpot_amount = await uow.economy.take_jackpot()
+            profit += jackpot_amount
 
         await uow.logs.log_try_event(
             user_id=user_id, event_type='lottery',

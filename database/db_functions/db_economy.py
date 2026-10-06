@@ -30,6 +30,15 @@ class EconomyRepository:
             logger.error(f"Error: {e}")
             raise
 
+    async def take_jackpot(self):
+        result = await self.session.execute(
+            select(Jackpot.money).with_for_update()
+        )
+        await self.session.execute(
+            update(Jackpot).values(money=0)
+        )
+        return result.scalar_one()
+
 
     async def update_lottery_and_user(self, user_id: int, user_money_change: int, jackpot_change: int, timer: int = 0) -> int | None:
         try:
@@ -75,6 +84,7 @@ class EconomyRepository:
                 .join(Timestamp, Timestamp.id == User.id)
                 .join(UserData, UserData.id == User.id)
                 .where(User.discord_id == user_id)
+                .with_for_update(of=[Timestamp, Balance])
             )
             result = await self.session.execute(stmt)
             return result.one_or_none()

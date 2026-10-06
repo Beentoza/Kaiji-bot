@@ -52,6 +52,8 @@ async def test_lottery_logic(try_data, monkeypatch, scenario_name, fake_uow):
     fake_uow.economy.get_lottery_info.return_value = (
         lottery_timestamp, setup["balance"], setup["status"], setup["jackpot"], setup["luck_factor"],
     )
+    # place 1 reads the jackpot under lock via take_jackpot, not from the snapshot above
+    fake_uow.economy.take_jackpot.return_value = setup["jackpot"]
 
     if scenario["mock_randint"] is not None:
         monkeypatch.setattr(
