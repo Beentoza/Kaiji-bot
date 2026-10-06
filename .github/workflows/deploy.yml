@@ -1,13 +1,54 @@
-name: Deploy Kaiji Bot
+name: Test and deploy Kaiji Bot
 
-# when to trigger
+# tests on both branches, deploy only from pre-release
 on:
   push:
     branches:
+      - develop
       - pre-release
 
 jobs:
+  tests:
+    runs-on: ubuntu-latest
+    # throwaway Postgres for this job, same image and credentials as docker-compose.yml
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: lucky
+          POSTGRES_PASSWORD: tucky
+          POSTGRES_DB: kaiji_tests
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    env:
+      TEST_DATABASE_URI: postgresql+asyncpg://lucky:tucky@localhost:5432/kaiji_tests
+      # database/factory.py builds the engine on import and fails without it
+      DATABASE_URI: postgresql+asyncpg://lucky:tucky@localhost:5432/kaiji_tests
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: '**/requirements*.txt'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+      - name: Unit tests
+        run: python -m pytest tests/unit -q
+      - name: Integration tests
+        run: python -m pytest tests/integration -q
+
   deploy:
+    # skipped if tests failed
+    needs: tests
+    if: github.ref == 'refs/heads/pre-release'
     runs-on: ubuntu-latest
     steps:
       # connect over SSH using the secrets configured earlier
